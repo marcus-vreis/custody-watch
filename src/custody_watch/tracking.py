@@ -59,9 +59,7 @@ def video_fps(video_path: Path) -> float:
         capture.release()
 
     if fps <= 0.0 or not math.isfinite(fps):
-        raise ValueError(
-            f"não foi possível ler o fps de {video_path}; passe fps= explicitamente"
-        )
+        raise ValueError(f"não foi possível ler o fps de {video_path}; passe fps= explicitamente")
     return fps
 
 

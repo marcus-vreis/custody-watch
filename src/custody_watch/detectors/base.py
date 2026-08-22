@@ -24,12 +24,6 @@ class Detector(Protocol):
         ...
 
 
-def filter_relevant(
-    detections: list[Detection], min_confidence: float = 0.35
-) -> list[Detection]:
+def filter_relevant(detections: list[Detection], min_confidence: float = 0.35) -> list[Detection]:
     """Descarta classes fora do escopo e detecções de baixa confiança."""
-    return [
-        d
-        for d in detections
-        if d.cls in RELEVANT_CLASSES and d.confidence >= min_confidence
-    ]
+    return [d for d in detections if d.cls in RELEVANT_CLASSES and d.confidence >= min_confidence]

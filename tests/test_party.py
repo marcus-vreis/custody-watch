@@ -429,9 +429,7 @@ def test_track_com_ids_misturados_e_rejeitado():
     ]
 
     with pytest.raises(ValueError, match="único track_id"):
-        manager.try_join_strong(
-            party.party_id, 2, misturado, track(2, [(0.5, 0.0), (3.5, 0.0)])
-        )
+        manager.try_join_strong(party.party_id, 2, misturado, track(2, [(0.5, 0.0), (3.5, 0.0)]))
 
 
 def test_candidate_track_de_outro_id_e_rejeitado():

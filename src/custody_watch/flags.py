@@ -44,8 +44,7 @@ def flag_for_removal(bag: Bag, carrier_track: int, t: float) -> Flag | None:
 
     if bag.is_orphan:
         explanation = (
-            f"Bagagem {bag.bag_id}, sem dono identificado, foi retirada "
-            f"em {_timestamp(t)}."
+            f"Bagagem {bag.bag_id}, sem dono identificado, foi retirada em {_timestamp(t)}."
         )
     else:
         explanation = (
@@ -90,8 +89,7 @@ def flag_contact(person: int, bag: Bag, t: float) -> Flag:
         t=t,
         weight=WEIGHT_N2,
         explanation=(
-            f"Tocou na bagagem {bag.bag_id}, do grupo {bag.owner_party}, "
-            f"em {_timestamp(t)}."
+            f"Tocou na bagagem {bag.bag_id}, do grupo {bag.owner_party}, em {_timestamp(t)}."
         ),
     )
 

@@ -93,9 +93,7 @@ def _pair_by_time(
     if not track_a or not track_b:
         return []
 
-    nearest_b_of = {
-        id(a): min(track_b, key=lambda b: abs(b.t - a.t)) for a in track_a
-    }
+    nearest_b_of = {id(a): min(track_b, key=lambda b: abs(b.t - a.t)) for a in track_a}
 
     pairs: list[tuple[Observation, Observation]] = []
     for observation in track_b:
@@ -128,8 +126,7 @@ def _overlap_is_continuous(
     if times[-1] - times[0] < min_overlap_s:
         return False
     return all(
-        later - earlier <= max_gap_s
-        for earlier, later in zip(times, times[1:], strict=False)
+        later - earlier <= max_gap_s for earlier, later in zip(times, times[1:], strict=False)
     )
 
 
@@ -207,9 +204,7 @@ class PartyManager:
         if already:
             raise ValueError(f"tracks já pertencem a um grupo: {already}")
 
-        party = Party(
-            party_id=self._next_id, members={tid: Bond.STRONG for tid in track_ids}
-        )
+        party = Party(party_id=self._next_id, members={tid: Bond.STRONG for tid in track_ids})
         self._parties[party.party_id] = party
         for track_id in track_ids:
             self._party_of[track_id] = party.party_id

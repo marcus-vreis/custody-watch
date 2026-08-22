@@ -15,7 +15,12 @@ from custody_watch.types import Bag, BagState, Flag, FlagLevel, Point
 
 def make_flag(t: float, weight: float = 1.0, level: FlagLevel = FlagLevel.N2) -> Flag:
     return Flag(
-        kind="teste", level=level, person=1, bag=2, t=t, weight=weight,
+        kind="teste",
+        level=level,
+        person=1,
+        bag=2,
+        t=t,
+        weight=weight,
         explanation="teste",
     )
 
@@ -105,8 +110,7 @@ def test_flag_de_contato_e_n2_e_cita_o_grupo_dono():
 def test_store_agrupa_flags_por_pessoa():
     store = FlagStore()
     store.add(make_flag(t=10.0, weight=1.0))
-    store.add(Flag("outro", FlagLevel.N1, person=2, bag=3, t=10.0, weight=5.0,
-                   explanation="x"))
+    store.add(Flag("outro", FlagLevel.N1, person=2, bag=3, t=10.0, weight=5.0, explanation="x"))
 
     assert store.score(person=1, now=10.0) == pytest.approx(1.0)
     assert store.score(person=2, now=10.0) == pytest.approx(5.0)
@@ -124,7 +128,6 @@ def test_store_lista_flags_da_pessoa_em_ordem_cronologica():
 def test_store_lista_as_pessoas_com_flag():
     store = FlagStore()
     store.add(make_flag(t=10.0))
-    store.add(Flag("k", FlagLevel.N1, person=5, bag=None, t=10.0, weight=1.0,
-                   explanation="x"))
+    store.add(Flag("k", FlagLevel.N1, person=5, bag=None, t=10.0, weight=1.0, explanation="x"))
 
     assert set(store.people()) == {1, 5}

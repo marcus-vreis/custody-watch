@@ -7,7 +7,12 @@ from custody_watch.types import Flag, FlagLevel
 
 def flag(person: int, level: FlagLevel, weight: float, t: float = 0.0) -> Flag:
     return Flag(
-        kind="k", level=level, person=person, bag=1, t=t, weight=weight,
+        kind="k",
+        level=level,
+        person=person,
+        bag=1,
+        t=t,
+        weight=weight,
         explanation=f"pessoa {person}",
     )
 
