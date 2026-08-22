@@ -1,3 +1,5 @@
+import random
+
 import pytest
 
 from custody_watch.party import PartyManager, is_comoving
@@ -23,19 +25,92 @@ def track(
     ]
 
 
+def sentado(
+    track_id: int,
+    x: float,
+    segundos: float = 10.0,
+    fps: float = 25.0,
+    jitter_m: float = 0.02,
+    seed: int = 0,
+) -> list[Observation]:
+    """Pessoa imóvel, como um detector real a enxerga.
+
+    Nenhum detector produz a mesma coordenada duas vezes. Testar imobilidade com
+    `(0.0, 0.0)` repetido protege contra um cenário fisicamente impossível — e
+    dois centímetros de jitter, um quarto de pixel no fundo da cena, bastavam
+    para derrubar a guarda quando ela media caminho percorrido.
+    """
+    rng = random.Random(seed)
+    amostras = int(segundos * fps)
+    return [
+        Observation(
+            track_id=track_id,
+            cls="person",
+            position=Point(
+                x + rng.uniform(-jitter_m, jitter_m),
+                rng.uniform(-jitter_m, jitter_m),
+            ),
+            t=i / fps,
+        )
+        for i in range(amostras)
+    ]
+
+
 # --- is_comoving: a armadilha do zero -----------------------------------------
 
 
 def test_pessoas_paradas_nao_estao_co_movendo():
     """Zero correlaciona perfeitamente com zero.
 
-    Sem exigir caminho percorrido mínimo, todos os sentados na praça de
-    alimentação viram uma party única.
+    Sem exigir extensão mínima, todos os sentados na praça de alimentação viram
+    uma party única.
     """
     a = track(1, [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)])
     b = track(2, [(1.0, 0.0), (1.0, 0.0), (1.0, 0.0)])
 
     assert is_comoving(a, b) is False
+
+
+def test_jitter_de_deteccao_nao_conta_como_deslocamento():
+    """Duas pessoas sentadas, dez segundos, ruído realista de detector.
+
+    Somando passo a passo, cada uma "percorre" cerca de nove metros sem sair do
+    lugar. É assim que uma métrica de caminho entrega posse de bagagem a quem
+    apenas sentou ao lado.
+    """
+    a = sentado(1, x=0.0, seed=7)
+    b = sentado(2, x=1.0, seed=8)
+
+    assert is_comoving(a, b) is False
+
+
+def test_perambular_no_lugar_nao_conta_como_deslocamento():
+    """Andar de um lado para o outro num raio de um metro não é ir a lugar algum.
+
+    Sete segundos perambulando acumulam seis metros de caminho — mais que o
+    limiar de entrada tardia — sem que ninguém saia de um círculo de dois
+    metros.
+    """
+    vitima = track(
+        1, [(0.0, 0.0), (0.1, 0.0), (0.2, 0.0), (0.3, 0.0), (0.2, 0.0), (0.1, 0.0), (0.0, 0.0)]
+    )
+    ladrao = track(
+        2, [(0.5, 0.0), (1.5, 0.0), (0.5, 0.0), (1.5, 0.0), (0.5, 0.0), (1.5, 0.0), (0.5, 0.0)]
+    )
+
+    assert is_comoving(vitima, ladrao) is False
+
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    assert manager.try_join_strong(party.party_id, 2, vitima, ladrao) is False
+    assert party.owns(2) is False
+
+
+def test_is_comoving_e_simetrica():
+    a = track(1, [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (10.0, 0.0)], t0=0.0)
+    b = track(2, [(0.2, 0.0), (1.2, 0.0), (2.2, 0.0)], t0=0.5)
+
+    assert is_comoving(a, b) == is_comoving(b, a)
 
 
 def test_apenas_um_parado_nao_e_co_movimento():
@@ -105,6 +180,36 @@ def test_sobreposicao_temporal_insuficiente_nao_e_co_movimento():
     b = track(2, [(0.5, 0.0), (1.5, 0.0)], t0=2.5)
 
     assert is_comoving(a, b) is False
+
+
+def test_amostras_esparsas_nao_sao_sobreposicao_continua():
+    """Três fotografias separadas por um minuto não são co-movimento sustentado.
+
+    Contagem de amostras não é duração. Como tracks fragmentados são o caso
+    normal, um ladrão cujo track sobrevive nos três instantes em que passou
+    perto da vítima receberia vínculo forte sem nunca ter andado com ela.
+    """
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    vitima = track(1, [(0.0, 0.0), (3.0, 0.0), (6.0, 0.0)], t0=0.0, dt=60.0)
+    ladrao = track(2, [(0.5, 0.0), (3.5, 0.0), (6.5, 0.0)], t0=0.0, dt=60.0)
+
+    assert vitima[-1].t == 120.0
+    assert is_comoving(vitima, ladrao) is False
+    assert manager.try_join_strong(party.party_id, 2, vitima, ladrao) is False
+
+
+def test_tolerancia_temporal_e_respeitada():
+    """A guarda temporal precisa de teste próprio.
+
+    Sem ele, afrouxar `tolerance_s` passaria despercebido — os outros testes
+    falham por outras guardas antes de chegar nesta.
+    """
+    a = track(1, [(0.0, 0.0), (2.0, 0.0), (4.0, 0.0)], t0=0.0, dt=1.0)
+    b = track(2, [(0.5, 0.0), (2.5, 0.0), (4.5, 0.0)], t0=0.4, dt=1.0)
+
+    assert is_comoving(a, b, tolerance_s=0.5) is True
+    assert is_comoving(a, b, tolerance_s=0.1) is False
 
 
 def test_ida_e_volta_conta_como_deslocamento_conjunto():
@@ -244,6 +349,55 @@ def test_nao_se_promove_com_o_proprio_track():
 
     assert manager.try_join_strong(party.party_id, 2, ladrao, ladrao) is False
     assert party.owns(2) is False
+
+
+def test_membro_forte_nao_se_auto_promove():
+    """Exercita a guarda `member_id == track_id` de verdade.
+
+    O teste do track alheio para antes dela, em `party.owns`.
+    """
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    proprio = track(1, [(0.0, 0.0), (3.0, 0.0), (6.0, 0.0)])
+
+    assert manager.try_join_strong(party.party_id, 1, proprio, proprio) is False
+
+
+def test_membro_parado_nao_promove_candidato():
+    """Os dois precisam ter coberto terreno, não só o candidato.
+
+    Medir apenas o candidato deixaria passar quem andou ao lado de um membro
+    que não saiu do lugar — e quem não saiu do lugar não estava indo a canto
+    nenhum acompanhado.
+    """
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    membro_parado = track(1, [(0.0, 0.0), (0.3, 0.0), (0.6, 0.0)])
+    candidato = track(2, [(0.5, 0.0), (3.5, 0.0), (6.5, 0.0)])
+
+    assert manager.try_join_strong(party.party_id, 2, membro_parado, candidato) is False
+    assert party.owns(2) is False
+
+
+def test_track_vazio_nao_promove():
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+
+    assert manager.try_join_strong(party.party_id, 2, [], []) is False
+
+
+def test_track_com_ids_misturados_e_rejeitado():
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    misturado = [
+        Observation(track_id=1, cls="person", position=Point(0.0, 0.0), t=0.0),
+        Observation(track_id=5, cls="person", position=Point(3.0, 0.0), t=1.0),
+    ]
+
+    with pytest.raises(ValueError, match="único track_id"):
+        manager.try_join_strong(
+            party.party_id, 2, misturado, track(2, [(0.5, 0.0), (3.5, 0.0)])
+        )
 
 
 def test_candidate_track_de_outro_id_e_rejeitado():
