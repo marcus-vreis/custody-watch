@@ -121,6 +121,9 @@ def _overlap_is_continuous(
     instantes em que passou perto da vítima receberia vínculo forte sem nunca
     ter andado com ela.
     """
+    if not pairs:
+        return False
+
     times = [b.t for _, b in pairs]
     if times[-1] - times[0] < min_overlap_s:
         return False

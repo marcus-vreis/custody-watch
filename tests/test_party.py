@@ -363,20 +363,54 @@ def test_membro_forte_nao_se_auto_promove():
     assert manager.try_join_strong(party.party_id, 1, proprio, proprio) is False
 
 
-def test_membro_parado_nao_promove_candidato():
-    """Os dois precisam ter coberto terreno, não só o candidato.
+def test_candidato_com_extensao_curta_nao_e_promovido():
+    """Os dois precisam ter coberto terreno, não só um deles.
 
-    Medir apenas o candidato deixaria passar quem andou ao lado de um membro
-    que não saiu do lugar — e quem não saiu do lugar não estava indo a canto
-    nenhum acompanhado.
+    As trajetórias abaixo ficam a menos de 2m uma da outra em todos os pares,
+    então `is_comoving` passa e a decisão chega de fato em
+    `min(extensão_membro, extensão_candidato)`. Uma versão anterior deste teste
+    afastava os dois além do limite de separação e era rejeitada antes disso —
+    afirmava cobrir a guarda de extensão sem nunca alcançá-la.
     """
     manager = PartyManager()
     party = manager.form_on_arrival([1])
-    membro_parado = track(1, [(0.0, 0.0), (0.3, 0.0), (0.6, 0.0)])
-    candidato = track(2, [(0.5, 0.0), (3.5, 0.0), (6.5, 0.0)])
+    membro = track(1, [(0.0, 0.0), (1.5, 0.0), (3.0, 0.0), (4.5, 0.0), (6.0, 0.0)])
+    candidato = track(2, [(2.0, 0.0), (2.75, 0.0), (3.5, 0.0), (4.25, 0.0), (5.0, 0.0)])
 
-    assert manager.try_join_strong(party.party_id, 2, membro_parado, candidato) is False
+    assert is_comoving(membro, candidato) is True
+    assert manager.try_join_strong(party.party_id, 2, membro, candidato) is False
     assert party.owns(2) is False
+
+
+def test_membro_com_extensao_curta_nao_promove_candidato():
+    """O espelho do anterior: quem não saiu do lugar não levou ninguém junto."""
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    membro = track(1, [(2.0, 0.0), (2.75, 0.0), (3.5, 0.0), (4.25, 0.0), (5.0, 0.0)])
+    candidato = track(2, [(0.0, 0.0), (1.5, 0.0), (3.0, 0.0), (4.5, 0.0), (6.0, 0.0)])
+
+    assert is_comoving(membro, candidato) is True
+    assert manager.try_join_strong(party.party_id, 2, membro, candidato) is False
+    assert party.owns(2) is False
+
+
+def test_co_movimento_no_eixo_y_conta_igual():
+    """A suíte anda quase toda ao longo de X, num plano que é 2D."""
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    membro = track(1, [(0.0, 0.0), (0.0, 3.0), (0.0, 6.0)])
+    candidato = track(2, [(0.5, 0.0), (0.5, 3.0), (0.5, 6.0)])
+
+    assert manager.try_join_strong(party.party_id, 2, membro, candidato) is True
+    assert party.owns(2) is True
+
+
+def test_min_overlap_zero_nao_estoura_com_pares_vazios():
+    """`min_overlap` é parâmetro público; zero não pode virar IndexError."""
+    a = track(1, [(0.0, 0.0), (3.0, 0.0), (6.0, 0.0)], t0=0.0)
+    b = track(2, [(0.5, 0.0), (3.5, 0.0), (6.5, 0.0)], t0=600.0)
+
+    assert is_comoving(a, b, min_overlap=0) is False
 
 
 def test_track_vazio_nao_promove():
