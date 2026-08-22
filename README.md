@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** design complete, implementation not started. See [the design doc](docs/superpowers/specs/2026-08-22-deteccao-custodia-bagagem-design.md) (Portuguese).
+> **Status:** design complete, implementation not started. Progress is tracked in [issues](https://github.com/marcus-vreis/custody-watch/issues). The full design document is kept outside this repository.
 
 ## What this is
 

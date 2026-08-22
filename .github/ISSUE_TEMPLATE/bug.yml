@@ -1,0 +1,42 @@
+name: Bug
+description: Something behaves incorrectly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Paste the real output. Do not paraphrase it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: The shortest input that triggers it — ideally a failing test.
+      render: python
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      placeholder: "custody.py"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - OS:
+        - Python: `uv run python --version`
+        - GPU:

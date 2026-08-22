@@ -1,0 +1,42 @@
+name: Task
+description: A unit of implementation work
+labels: ["task"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this task produces, in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: Exact paths this task creates or modifies.
+      placeholder: |
+        - Create: `src/custody_watch/example.py`
+        - Test:   `tests/test_example.py`
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How to know this is done. Every box must be checkable by running a command.
+      value: |
+        - [ ] Tests written before implementation, and observed failing first
+        - [ ] `uv run pytest tests/test_<name>.py -v` passes
+        - [ ] `uv run ruff check src tests` passes
+        - [ ] Committed
+    validations:
+      required: true
+
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      description: Issue numbers that must land first. Leave blank if none.
+      placeholder: "#3, #4"

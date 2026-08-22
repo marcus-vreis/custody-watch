@@ -42,3 +42,6 @@ desktop.ini
 
 # Claude Code
 .claude/logs/
+
+# Documentacao de design e planos — local apenas
+docs/
