@@ -8,8 +8,6 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
-# uv
-uv.lock
 
 # Model weights — never commit, they are large and redistributable separately
 *.pt
