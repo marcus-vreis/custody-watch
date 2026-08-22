@@ -1,0 +1,42 @@
+[project]
+name = "custody-watch"
+version = "0.0.1"
+description = "Luggage custody-change detection for airport surveillance video"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Marcus Vinicius" }]
+keywords = ["computer-vision", "surveillance", "object-tracking", "airport-security"]
+
+dependencies = [
+    # Detection. Pinned only by floor — YOLO26 needs a recent release.
+    # AGPL-3.0: the reason this project is AGPL-3.0. See docs/.../design.md §8.
+    "ultralytics>=8.3.0",
+    "opencv-python>=4.10",
+    "numpy>=1.26",
+    # Homography, Hungarian assignment for party/bag association.
+    "scipy>=1.14",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/custody_watch"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

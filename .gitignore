@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+uv.lock
+
+# Model weights — never commit, they are large and redistributable separately
+*.pt
+*.pth
+*.onnx
+*.engine
+weights/
+
+# Datasets — PETS2007 etc. are downloaded, never vendored
+data/
+datasets/
+*.avi
+*.mp4
+*.mkv
+*.mov
+
+# Outputs
+outputs/
+runs/
+clips/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# Claude Code
+.claude/logs/
