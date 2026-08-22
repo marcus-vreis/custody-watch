@@ -1,0 +1,12 @@
+# Normaliza para LF no repositório, independente do SO de quem commita.
+# Sem isso, o git avisa a cada commit no Windows que vai converter LF->CRLF,
+# e dois contribuidores em SOs diferentes produzem diffs fantasma.
+* text=auto eol=lf
+
+# Binários: nunca converter.
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.avi binary
+*.pt  binary
+*.onnx binary

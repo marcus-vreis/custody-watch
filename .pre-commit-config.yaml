@@ -1,0 +1,52 @@
+# Rodar em todos os arquivos:  uv run pre-commit run --all-files
+# Instalar os hooks localmente:  uv run pre-commit install --install-hooks
+#                                uv run pre-commit install --hook-type commit-msg
+
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        # Backstop para pesos de modelo. O .gitignore já cobre *.pt e *.onnx,
+        # mas um peso renomeado passaria despercebido.
+        args: [--maxkb=1024]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # As duas guardas abaixo tornam mecânicas decisões que hoje só existem
+      # no CONTRIBUTING.md. Num repositório público, uma regra que depende de
+      # alguém ter lido a documentação não é uma regra.
+
+      - id: sem-reconhecimento-facial
+        name: reconhecimento facial esta permanentemente fora de escopo
+        language: pygrep
+        entry: '(?i)^\s*(import|from)\s+(insightface|face_recognition|deepface|facenet|dlib|mediapipe)\b'
+        files: ^src/.*\.py$
+
+      - id: sem-coautoria-de-ia
+        name: commits tem autor unico
+        language: pygrep
+        entry: '(?i)^\s*co-authored-by:.*(claude|copilot|gpt-|chatgpt|anthropic|openai|cursor|codeium)'
+        stages: [commit-msg]

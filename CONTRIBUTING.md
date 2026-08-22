@@ -9,11 +9,30 @@ uv python install 3.12
 uv sync --extra dev
 ```
 
+Install the git hooks — this is not optional, CI runs the same checks:
+
+```bash
+uv run pre-commit install --install-hooks
+```
+
 Verify:
 
 ```bash
 uv run pytest -v
+uv run pre-commit run --all-files
 ```
+
+## What the hooks enforce
+
+Beyond the usual formatting and whitespace hygiene, three checks exist for reasons specific to this project:
+
+**The test suite runs on every commit.** It takes under a second, so there is no reason to defer it. Three bugs in this repository's history passed human review and were caught by tooling; the suite is the cheapest tool available.
+
+**Face recognition imports are rejected.** `insightface`, `face_recognition`, `deepface`, `facenet`, `dlib`, `mediapipe`. This is a permanent scope decision, not a v1 limitation — see below. A rule that depends on someone having read this file is not a rule.
+
+**Commit messages may not carry AI co-authorship trailers.** Human co-authors are fine and expected; `Co-Authored-By: Claude`, Copilot, and equivalents are rejected.
+
+If a hook blocks something it should not, fix the hook in `.pre-commit-config.yaml` and say why in the commit message. Do not reach for `--no-verify` — CI runs the same checks and will catch it anyway.
 
 ## Workflow
 
