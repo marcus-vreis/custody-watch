@@ -170,6 +170,8 @@ party = { members: {track_id: STRONG | WEAK}, bags: [bag_id] }
 | Já trocaram bagagem entre si | STRONG | sim |
 | Apenas proximidade estática (>60s parados perto) | WEAK | **não** — apenas atenua o flag |
 
+**A assimetria entre as duas primeiras linhas é intencional.** Formação na entrada da cena aceita evidência mais fraca (3s de co-movimento) porque é o momento natural em que grupos se formam e o custo de simular é alto — exigiria o ladrão já estar acompanhando a vítima antes. Entrada tardia exige muito mais (5m de deslocamento conjunto) porque é o caminho explorável: é ali que o atacante tentaria se inserir. Quanto mais tarde o vínculo se forma, mais caro ele deve ser.
+
 **Armadilha:** co-movimento exige **deslocamento real**. Duas pessoas paradas têm vetor de velocidade zero, e zero correlaciona perfeitamente com zero. Sem exigir deslocamento mínimo, todos os sentados na praça de alimentação viram uma party única — e o exploit de P1 volta pela porta dos fundos.
 
 **Reentrada após perda de ID:** re-ID de aparência (embedding) + plausibilidade espaço-temporal (voltou por entrada coerente, em janela de tempo coerente). Proximidade entra como desempate, nunca como evidência principal. Sem confiança suficiente ⇒ P3.
@@ -210,8 +212,8 @@ Níveis:
 | Nível | Gatilho | Ação |
 |---|---|---|
 | **Contexto** | bagagem com grupo conhecido / órfã / custódia indeterminada | Estado interno, não pontua |
-| **N1 fraco** | Permanência >N min a <2m de bagagem de outro grupo · Aproximação e afastamento sem contato, repetido · Bagagem desacompanhada >25s | Acumula, não entra na fila |
-| **N2 relacional** | Contato físico com bagagem de outro grupo · Proximidade a ≥3 grupos distintos em janela curta · Vínculo fraco recém-formado seguido de contato | Entra na fila |
+| **N1 fraco** | Permanência **>90s** a <2m de bagagem de outro grupo · Aproximação e afastamento sem contato, **≥2 vezes** · Bagagem desacompanhada >25s | Acumula, não entra na fila |
+| **N2 relacional** | Contato físico com bagagem de outro grupo · Proximidade a ≥3 grupos distintos **em janela de 10 min** · Vínculo fraco recém-formado seguido de contato | Entra na fila |
 | **N3 custódia** | Bagagem removida por pessoa fora do grupo dono · Bagagem órfã removida · Remoção seguida de mudança brusca de direção/velocidade | Topo da fila |
 
 **Funcionários** geram N2/N3 legitimamente (limpeza manuseia bagagem). Mitigação preferida: lista de zonas/horários onde manuseio por staff é esperado. Evita depender de classificação de uniforme e não introduz nenhum tratamento biométrico.
