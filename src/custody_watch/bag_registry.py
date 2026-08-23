@@ -10,16 +10,19 @@ Regra P3: quando a reassociação é incerta, marcar AMBIGUA e calar.
 
 from __future__ import annotations
 
+from .config import RegistryConfig
 from .types import Bag, BagState, Observation
 
-MOVED_THRESHOLD_M = 0.5
-AMBIGUITY_RADIUS_M = 1.0
+DEFAULT_REGISTRY = RegistryConfig()
+
+MOVED_THRESHOLD_M = DEFAULT_REGISTRY.moved_threshold_m
+AMBIGUITY_RADIUS_M = DEFAULT_REGISTRY.ambiguity_radius_m
 
 
 class BagRegistry:
-    def __init__(self, moved_threshold_m: float = MOVED_THRESHOLD_M) -> None:
+    def __init__(self, config: RegistryConfig = DEFAULT_REGISTRY) -> None:
         self._bags: dict[int, Bag] = {}
-        self._moved_threshold_m = moved_threshold_m
+        self._config = config
 
     def get(self, bag_id: int) -> Bag | None:
         return self._bags.get(bag_id)
@@ -43,7 +46,7 @@ class BagRegistry:
             self._bags[bag.bag_id] = bag
             return bag
 
-        if bag.anchor.distance_to(observation.position) >= self._moved_threshold_m:
+        if bag.anchor.distance_to(observation.position) >= self._config.moved_threshold_m:
             bag.anchor = observation.position
         bag.last_seen = observation.t
         return bag
@@ -52,15 +55,13 @@ class BagRegistry:
         bag = self._bags.get(observation.track_id)
         if bag is None:
             return False
-        return bag.anchor.distance_to(observation.position) >= self._moved_threshold_m
+        return bag.anchor.distance_to(observation.position) >= self._config.moved_threshold_m
 
     def assign_owner(self, bag_id: int, party_id: int) -> None:
         """Vinculação por back-tracing: quem depositou a bagagem."""
         self._bags[bag_id].owner_party = party_id
 
-    def mark_ambiguous_neighbours(
-        self, bag_id: int, radius_m: float = AMBIGUITY_RADIUS_M
-    ) -> list[int]:
+    def mark_ambiguous_neighbours(self, bag_id: int) -> list[int]:
         """Marca a bagagem e todas as vizinhas dentro do raio como AMBIGUA.
 
         Chamado quando uma oclusão se resolve com baixa confiança. Marcar todas
@@ -70,7 +71,7 @@ class BagRegistry:
         target = self._bags[bag_id]
         affected: list[int] = []
         for other in self._bags.values():
-            if target.anchor.distance_to(other.anchor) <= radius_m:
+            if target.anchor.distance_to(other.anchor) <= self._config.ambiguity_radius_m:
                 other.state = BagState.AMBIGUA
                 affected.append(other.bag_id)
         return affected

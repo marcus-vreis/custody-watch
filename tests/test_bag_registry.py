@@ -1,4 +1,5 @@
 from custody_watch.bag_registry import BagRegistry
+from custody_watch.config import RegistryConfig
 from custody_watch.types import BagState, Observation, Point
 
 
@@ -55,7 +56,7 @@ def test_bagagens_ambiguas_suprimem_alerta_das_duas():
     registry.observe(obs(1, 5.0, 5.0, t=0.0))
     registry.observe(Observation(2, "suitcase", Point(5.4, 5.0), 0.0))
 
-    ambiguous = registry.mark_ambiguous_neighbours(bag_id=1, radius_m=1.0)
+    ambiguous = registry.mark_ambiguous_neighbours(bag_id=1)
 
     assert set(ambiguous) == {1, 2}
     assert registry.get(1).state is BagState.AMBIGUA
@@ -67,7 +68,7 @@ def test_bagagem_distante_nao_vira_ambigua():
     registry.observe(obs(1, 5.0, 5.0, t=0.0))
     registry.observe(Observation(2, "suitcase", Point(20.0, 5.0), 0.0))
 
-    ambiguous = registry.mark_ambiguous_neighbours(bag_id=1, radius_m=1.0)
+    ambiguous = registry.mark_ambiguous_neighbours(bag_id=1)
 
     assert ambiguous == [1]
     assert registry.get(2).state is BagState.NOVA
@@ -93,3 +94,12 @@ def test_all_lista_todas_as_bagagens():
 
 def test_get_de_bagagem_desconhecida_e_none():
     assert BagRegistry().get(404) is None
+
+
+def test_config_altera_o_limiar_de_movimento():
+    """Com limiar de 2m, um deslocamento de 1m deixa de contar como movimento."""
+    registry = BagRegistry(RegistryConfig(moved_threshold_m=2.0))
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+
+    assert registry.has_moved(obs(1, 6.0, 5.0, t=1.0)) is False
+    assert registry.has_moved(obs(1, 8.0, 5.0, t=1.0)) is True
