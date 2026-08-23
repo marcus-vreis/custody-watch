@@ -44,6 +44,11 @@ MIN_OVERLAP_SAMPLES = DEFAULT_PARTY.min_overlap_samples
 MIN_OVERLAP_S = DEFAULT_PARTY.min_overlap_s
 MAX_GAP_S = DEFAULT_PARTY.max_gap_s
 TIME_TOLERANCE_S = DEFAULT_PARTY.time_tolerance_s
+
+# Instantes vem de `frame_index / fps`, entao diferencas quase nunca caem
+# exatas: 2.4 - 0.4 da 2.0000000000000004. Sem esta folga, uma cadencia
+# exatamente no limite e aceita ou rejeitada conforme o erro acumulado.
+TIME_EPSILON_S = 1e-9
 WEAK_BOND_S = DEFAULT_PARTY.weak_bond_s
 
 
@@ -75,6 +80,25 @@ def _extent(track: Sequence[Observation]) -> float:
     return (width**2 + height**2) ** 0.5
 
 
+def _nearest_indices(source: Sequence[Observation], target: Sequence[Observation]) -> list[int]:
+    """Para cada item de `target`, o índice do item de `source` mais próximo no tempo.
+
+    Varredura de dois ponteiros, O(n+m), sobre listas ordenadas por `t`. A busca
+    ingênua com `min()` era O(n·m) e dominava o pipeline: no CAVIAR consumia 47%
+    do tempo total, 34 ms por chamada.
+
+    O avanço só acontece quando o próximo é **estritamente** melhor, para que
+    empates fiquem com o índice mais antigo — o mesmo desempate de `min()`.
+    """
+    indices: list[int] = []
+    i = 0
+    for item in target:
+        while i + 1 < len(source) and abs(source[i + 1].t - item.t) < abs(source[i].t - item.t):
+            i += 1
+        indices.append(i)
+    return indices
+
+
 def _pair_by_time(
     track_a: Sequence[Observation],
     track_b: Sequence[Observation],
@@ -93,20 +117,27 @@ def _pair_by_time(
     Pressupõe que os dois tracks compartilham uma grade de tempo: `track_video`
     carimba todas as observações de um frame com o mesmo instante. Grades
     defasadas produzem menos pares, nunca pares errados.
+
+    Ordena defensivamente: a varredura de dois ponteiros exige ordem temporal,
+    e sobre entrada já ordenada o custo é linear.
     """
     if not track_a or not track_b:
         return []
 
-    nearest_b_of = {id(a): min(track_b, key=lambda b: abs(b.t - a.t)) for a in track_a}
+    a = sorted(track_a, key=lambda o: o.t)
+    b = sorted(track_b, key=lambda o: o.t)
+
+    mais_proximo_em_a = _nearest_indices(a, b)
+    mais_proximo_em_b = _nearest_indices(b, a)
 
     pairs: list[tuple[Observation, Observation]] = []
-    for observation in track_b:
-        nearest = min(track_a, key=lambda a: abs(a.t - observation.t))
-        if abs(nearest.t - observation.t) > tolerance_s:
+    for j, observation in enumerate(b):
+        i = mais_proximo_em_a[j]
+        if abs(a[i].t - observation.t) > tolerance_s:
             continue
-        if nearest_b_of[id(nearest)] is not observation:
+        if mais_proximo_em_b[i] != j:
             continue
-        pairs.append((nearest, observation))
+        pairs.append((a[i], observation))
     return pairs
 
 
@@ -126,12 +157,40 @@ def _overlap_is_continuous(
         return False
 
     times = [b.t for _, b in pairs]
-    if times[-1] - times[0] < config.min_overlap_s:
+    if times[-1] - times[0] < config.min_overlap_s - TIME_EPSILON_S:
         return False
     return all(
-        later - earlier <= config.max_gap_s
+        later - earlier <= config.max_gap_s + TIME_EPSILON_S
         for earlier, later in zip(times, times[1:], strict=False)
     )
+
+
+def _comovement(
+    track_a: Sequence[Observation],
+    track_b: Sequence[Observation],
+    config: PartyConfig = DEFAULT_PARTY,
+) -> list[tuple[Observation, Observation]] | None:
+    """Os pares casados quando as duas pessoas co-movem, `None` caso contrário.
+
+    Devolve os pares em vez de um booleano para que quem precise das medidas —
+    `try_join_strong` precisa das extensões — não tenha que refazer o
+    casamento. Recalcular custava uma segunda passada completa por promoção.
+    """
+    pairs = _pair_by_time(track_a, track_b, config.time_tolerance_s)
+    if len(pairs) < config.min_overlap_samples:
+        return None
+    if not _overlap_is_continuous(pairs, config):
+        return None
+
+    paired_a = [a for a, _ in pairs]
+    paired_b = [b for _, b in pairs]
+    if _extent(paired_a) < config.min_extent_m or _extent(paired_b) < config.min_extent_m:
+        return None
+
+    if not all(a.position.distance_to(b.position) <= config.proximity_m for a, b in pairs):
+        return None
+
+    return pairs
 
 
 def is_comoving(
@@ -150,18 +209,7 @@ def is_comoving(
 
     Simétrica nos argumentos.
     """
-    pairs = _pair_by_time(track_a, track_b, config.time_tolerance_s)
-    if len(pairs) < config.min_overlap_samples:
-        return False
-    if not _overlap_is_continuous(pairs, config):
-        return False
-
-    paired_a = [a for a, _ in pairs]
-    paired_b = [b for _, b in pairs]
-    if _extent(paired_a) < config.min_extent_m or _extent(paired_b) < config.min_extent_m:
-        return False
-
-    return all(a.position.distance_to(b.position) <= config.proximity_m for a, b in pairs)
+    return _comovement(track_a, track_b, config) is not None
 
 
 def _single_track_id(track: Sequence[Observation]) -> int:

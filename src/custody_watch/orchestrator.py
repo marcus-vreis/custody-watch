@@ -43,7 +43,7 @@ from .flags import FlagStore, flag_contact, flag_for_removal, flag_proximity
 from .ground_plane import GroundPlane
 from .party import PartyManager, is_comoving
 from .reid import TrackLinker
-from .tracking import TrackedDetection, to_observations
+from .tracking import PlausibilityGate, TrackedDetection, to_observations
 from .types import BAG_CLASSES, TERMINAL_BAG_STATES, Bag, BagState, Observation
 
 
@@ -83,6 +83,7 @@ class _Session:
         self.parties = PartyManager(config.party)
         self.registry = BagRegistry(config.registry)
         self.linker = TrackLinker(config.reid)
+        self.gate = PlausibilityGate(config.pipeline.max_observation_speed_ms)
 
         self.history: dict[int, list[Observation]] = {}
         self.missing: dict[int, int] = {}
@@ -304,7 +305,10 @@ def run_session(
         session.frames += 1
         session.t = t
 
-        observations = to_observations(tracked, plane, t)
+        # O portao roda antes de tudo: uma observacao que implica velocidade
+        # impossivel e artefato de projecao, e alimenta a medida de extensao
+        # como se fosse deslocamento real.
+        observations = session.gate.filter(to_observations(tracked, plane, t))
         bags = [o for o in observations if o.cls in BAG_CLASSES]
         people = session.resolve_people(observations, tracked)
 
