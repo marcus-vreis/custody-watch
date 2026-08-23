@@ -1,4 +1,5 @@
 import json
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -184,6 +185,11 @@ def test_config_de_exemplo_do_repositorio_carrega():
 
 
 def test_config_e_imutavel():
+    """A exceção certa tem nome.
+
+    `pytest.raises(Exception)` passaria também se a atribuição falhasse por um
+    typo no nome do campo — afirmaria imutabilidade sem testá-la.
+    """
     config = Config()
-    with pytest.raises(Exception):  # noqa: B017 -- FrozenInstanceError, qualquer AttributeError serve
+    with pytest.raises(FrozenInstanceError):
         config.party.proximity_m = 99.0
