@@ -6,7 +6,8 @@
     "min_overlap_samples": 3,
     "min_overlap_s": 2.0,
     "max_gap_s": 2.0,
-    "time_tolerance_s": 0.5
+    "time_tolerance_s": 0.5,
+    "weak_bond_s": 60.0
   },
   "custody": {
     "unattended_distance_m": 3.0,
@@ -34,5 +35,14 @@
     "position_slack_m": 2.0,
     "min_samples": 10,
     "max_samples": 200
+  },
+  "pipeline": {
+    "owner_search_radius_m": 3.0,
+    "missing_frames_before_removal": 5,
+    "merge_every_frames": 25,
+    "history_window_s": 10.0,
+    "contact_radius_m": 0.8,
+    "proximity_radius_m": 2.0,
+    "proximity_flag_s": 90.0
   }
 }

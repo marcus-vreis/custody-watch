@@ -40,6 +40,7 @@ class PartyConfig:
     min_overlap_s: float = 2.0
     max_gap_s: float = 2.0
     time_tolerance_s: float = 0.5
+    weak_bond_s: float = 60.0
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,19 @@ class FlagConfig:
     weight_n1: float = 1.0
     weight_n2: float = 3.0
     weight_n3: float = 10.0
+
+
+@dataclass(frozen=True)
+class PipelineConfig:
+    """Números do orquestrador. Antes eram constantes soltas no módulo."""
+
+    owner_search_radius_m: float = 3.0
+    missing_frames_before_removal: int = 5
+    merge_every_frames: int = 25
+    history_window_s: float = 10.0
+    contact_radius_m: float = 0.8
+    proximity_radius_m: float = 2.0
+    proximity_flag_s: float = 90.0
 
 
 @dataclass(frozen=True)
@@ -87,6 +101,7 @@ class Config:
     flags: FlagConfig = FlagConfig()
     alerts: AlertConfig = AlertConfig()
     reid: ReidConfig = ReidConfig()
+    pipeline: PipelineConfig = PipelineConfig()
 
 
 SAFE_BOUNDS: dict[str, Bounds] = {
@@ -140,6 +155,24 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         0.2,
         2.0,
         "abaixo de 0.2m o jitter do detector é lido como a bagagem sendo carregada",
+    ),
+    "party.weak_bond_s": Bounds(
+        10.0,
+        600.0,
+        "abaixo de 10s qualquer passagem casual vira vinculo fraco, e o flag de "
+        "quem so passou perto e atenuado sem motivo",
+    ),
+    "pipeline.contact_radius_m": Bounds(
+        0.3,
+        2.0,
+        "acima de 2m 'contato' passa a incluir quem so andou perto, e o flag N2 "
+        "deixa de significar que alguem tocou na bagagem",
+    ),
+    "pipeline.owner_search_radius_m": Bounds(
+        0.5,
+        5.0,
+        "acima de 5m o back-tracing atribui a bagagem a quem so passava pela "
+        "regiao, e o dono errado torna toda a cadeia de custodia invalida",
     ),
     "reid.min_similarity": Bounds(
         0.70,

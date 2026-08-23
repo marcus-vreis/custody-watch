@@ -44,7 +44,7 @@ MIN_OVERLAP_SAMPLES = DEFAULT_PARTY.min_overlap_samples
 MIN_OVERLAP_S = DEFAULT_PARTY.min_overlap_s
 MAX_GAP_S = DEFAULT_PARTY.max_gap_s
 TIME_TOLERANCE_S = DEFAULT_PARTY.time_tolerance_s
-WEAK_BOND_S = 60.0
+WEAK_BOND_S = DEFAULT_PARTY.weak_bond_s
 
 
 def _extent(track: Sequence[Observation]) -> float:
