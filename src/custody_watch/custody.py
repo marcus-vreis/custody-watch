@@ -11,11 +11,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from .config import CustodyConfig
 from .party import PartyManager
 from .types import TERMINAL_BAG_STATES, Bag, BagState, Observation
 
-UNATTENDED_DISTANCE_M = 3.0
-UNATTENDED_TIME_S = 25.0
+DEFAULT_CUSTODY = CustodyConfig()
+
+UNATTENDED_DISTANCE_M = DEFAULT_CUSTODY.unattended_distance_m
+UNATTENDED_TIME_S = DEFAULT_CUSTODY.unattended_time_s
 
 
 def update_attendance(
@@ -23,8 +26,7 @@ def update_attendance(
     people: Sequence[Observation],
     party_manager: PartyManager,
     t: float,
-    distance_m: float = UNATTENDED_DISTANCE_M,
-    timeout_s: float = UNATTENDED_TIME_S,
+    config: CustodyConfig = DEFAULT_CUSTODY,
 ) -> Bag:
     """ACOMPANHADA <-> DESACOMPANHADA conforme a distância do grupo dono.
 
@@ -39,7 +41,7 @@ def update_attendance(
 
     owner_nearby = any(
         party_manager.party_of(p.track_id) == bag.owner_party
-        and p.position.distance_to(bag.anchor) <= distance_m
+        and p.position.distance_to(bag.anchor) <= config.unattended_distance_m
         for p in people
     )
 
@@ -48,7 +50,7 @@ def update_attendance(
         bag.unattended_since = None
     elif bag.unattended_since is None:
         bag.unattended_since = t
-    elif t - bag.unattended_since >= timeout_s:
+    elif t - bag.unattended_since >= config.unattended_time_s:
         bag.state = BagState.DESACOMPANHADA
 
     return bag

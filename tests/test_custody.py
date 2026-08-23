@@ -1,3 +1,4 @@
+from custody_watch.config import CustodyConfig
 from custody_watch.custody import resolve_removal, update_attendance
 from custody_watch.party import PartyManager
 from custody_watch.types import Bag, BagState, Observation, Point
@@ -168,3 +169,16 @@ def test_estado_terminal_nao_transiciona_de_novo():
     resolve_removal(bag, carrier_track=99, party_manager=manager)
 
     assert bag.state is BagState.RETIRADA_DONO
+
+
+def test_config_altera_o_tempo_de_desacompanhamento():
+    """Com timeout de 10s, a bagagem vira desacompanhada aos 11s, não aos 26s."""
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    bag = owned_bag(party.party_id)
+    rapido = CustodyConfig(unattended_time_s=10.0)
+
+    update_attendance(bag, [person(1, 10.0, 0.0, t=0.0)], manager, t=0.0, config=rapido)
+    update_attendance(bag, [person(1, 10.0, 0.0, t=11.0)], manager, t=11.0, config=rapido)
+
+    assert bag.state is BagState.DESACOMPANHADA
