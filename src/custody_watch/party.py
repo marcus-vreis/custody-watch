@@ -31,15 +31,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from .config import PartyConfig
 from .types import Bond, Observation, Party
 
-PROXIMITY_M = 2.0
-LATE_JOIN_EXTENT_M = 5.0
-MIN_EXTENT_M = 0.5
-MIN_OVERLAP_SAMPLES = 3
-MIN_OVERLAP_S = 2.0
-MAX_GAP_S = 2.0
-TIME_TOLERANCE_S = 0.5
+DEFAULT_PARTY = PartyConfig()
+
+PROXIMITY_M = DEFAULT_PARTY.proximity_m
+LATE_JOIN_EXTENT_M = DEFAULT_PARTY.late_join_extent_m
+MIN_EXTENT_M = DEFAULT_PARTY.min_extent_m
+MIN_OVERLAP_SAMPLES = DEFAULT_PARTY.min_overlap_samples
+MIN_OVERLAP_S = DEFAULT_PARTY.min_overlap_s
+MAX_GAP_S = DEFAULT_PARTY.max_gap_s
+TIME_TOLERANCE_S = DEFAULT_PARTY.time_tolerance_s
 WEAK_BOND_S = 60.0
 
 
@@ -108,8 +111,7 @@ def _pair_by_time(
 
 def _overlap_is_continuous(
     pairs: Sequence[tuple[Observation, Observation]],
-    min_overlap_s: float = MIN_OVERLAP_S,
-    max_gap_s: float = MAX_GAP_S,
+    config: PartyConfig = DEFAULT_PARTY,
 ) -> bool:
     """A sobreposição precisa ser contínua no tempo, não três fotografias.
 
@@ -123,20 +125,18 @@ def _overlap_is_continuous(
         return False
 
     times = [b.t for _, b in pairs]
-    if times[-1] - times[0] < min_overlap_s:
+    if times[-1] - times[0] < config.min_overlap_s:
         return False
     return all(
-        later - earlier <= max_gap_s for earlier, later in zip(times, times[1:], strict=False)
+        later - earlier <= config.max_gap_s
+        for earlier, later in zip(times, times[1:], strict=False)
     )
 
 
 def is_comoving(
     track_a: Sequence[Observation],
     track_b: Sequence[Observation],
-    min_extent_m: float = MIN_EXTENT_M,
-    max_separation_m: float = PROXIMITY_M,
-    min_overlap: int = MIN_OVERLAP_SAMPLES,
-    tolerance_s: float = TIME_TOLERANCE_S,
+    config: PartyConfig = DEFAULT_PARTY,
 ) -> bool:
     """Duas pessoas co-movem se andaram JUNTAS, no mesmo intervalo de tempo.
 
@@ -149,18 +149,18 @@ def is_comoving(
 
     Simétrica nos argumentos.
     """
-    pairs = _pair_by_time(track_a, track_b, tolerance_s)
-    if len(pairs) < min_overlap:
+    pairs = _pair_by_time(track_a, track_b, config.time_tolerance_s)
+    if len(pairs) < config.min_overlap_samples:
         return False
-    if not _overlap_is_continuous(pairs):
+    if not _overlap_is_continuous(pairs, config):
         return False
 
     paired_a = [a for a, _ in pairs]
     paired_b = [b for _, b in pairs]
-    if _extent(paired_a) < min_extent_m or _extent(paired_b) < min_extent_m:
+    if _extent(paired_a) < config.min_extent_m or _extent(paired_b) < config.min_extent_m:
         return False
 
-    return all(a.position.distance_to(b.position) <= max_separation_m for a, b in pairs)
+    return all(a.position.distance_to(b.position) <= config.proximity_m for a, b in pairs)
 
 
 def _single_track_id(track: Sequence[Observation]) -> int:
@@ -179,10 +179,11 @@ class PartyManager:
     alguém num grupo sem registrar o inverso.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config: PartyConfig = DEFAULT_PARTY) -> None:
         self._parties: dict[int, Party] = {}
         self._party_of: dict[int, int] = {}
         self._next_id = 1
+        self._config = config
 
     def get(self, party_id: int) -> Party | None:
         return self._parties.get(party_id)
@@ -254,7 +255,7 @@ class PartyManager:
         if current is not None and current != party_id:
             return False
 
-        if not is_comoving(member_track, candidate_track):
+        if not is_comoving(member_track, candidate_track, self._config):
             return False
 
         pairs = _pair_by_time(member_track, candidate_track)
@@ -262,7 +263,7 @@ class PartyManager:
         candidate_extent = _extent([b for _, b in pairs])
         # Os dois precisam ter coberto terreno. Medir só o candidato deixaria
         # passar quem andou ao lado de um membro que não saiu do lugar.
-        if min(member_extent, candidate_extent) < LATE_JOIN_EXTENT_M:
+        if min(member_extent, candidate_extent) < self._config.late_join_extent_m:
             return False
 
         party.members[track_id] = Bond.STRONG
