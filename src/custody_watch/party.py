@@ -32,6 +32,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from .config import PartyConfig
+from .events import Event, EventKind, EventLog
 from .types import Bond, Observation, Party
 
 DEFAULT_PARTY = PartyConfig()
@@ -191,12 +192,21 @@ class PartyManager:
     def party_of(self, track_id: int) -> int | None:
         return self._party_of.get(track_id)
 
-    def form_on_arrival(self, track_ids: Sequence[int]) -> Party:
+    def form_on_arrival(
+        self,
+        track_ids: Sequence[int],
+        t: float = 0.0,
+        events: EventLog | None = None,
+    ) -> Party:
         """Grupo formado na entrada da cena — vínculo forte.
 
         Aceita evidência mais fraca que a entrada tardia porque é o momento
         natural de formação e o custo de simular é alto: exigiria o atacante já
         estar acompanhando a vítima antes.
+
+        `t` é o instante do frame em que o grupo se formou; o default existe só
+        para não quebrar chamadas antigas — o orquestrador deve sempre passar o
+        instante real do frame. Quando `events` é `None`, nada é emitido.
         """
         if not track_ids:
             raise ValueError("um grupo precisa de ao menos um membro")
@@ -210,19 +220,56 @@ class PartyManager:
         for track_id in track_ids:
             self._party_of[track_id] = party.party_id
         self._next_id += 1
+
+        if events is not None:
+            events.emit(
+                Event(
+                    kind=EventKind.PARTY_FORMED,
+                    t_start=t,
+                    t_end=t,
+                    subject=None,
+                    bag=None,
+                    party=party.party_id,
+                    evidence={"members": sorted(track_ids)},
+                )
+            )
         return party
 
-    def join_weak(self, party_id: int, track_id: int) -> bool:
+    def join_weak(
+        self,
+        party_id: int,
+        track_id: int,
+        t: float = 0.0,
+        events: EventLog | None = None,
+    ) -> bool:
         """Proximidade estática. NÃO transfere posse — apenas atenua o flag.
 
         Recusa quem já tem grupo: sentar perto de estranhos não pode tirar
         ninguém da própria família.
+
+        `t` é o instante do frame; o default existe só para não quebrar
+        chamadas antigas — o orquestrador deve sempre passar o instante real do
+        frame. Recusa não emite nada: evento é registro do que aconteceu, não
+        do que foi cogitado. Quando `events` é `None`, nada é emitido.
         """
         if track_id in self._party_of:
             return False
 
         self._parties[party_id].members[track_id] = Bond.WEAK
         self._party_of[track_id] = party_id
+
+        if events is not None:
+            events.emit(
+                Event(
+                    kind=EventKind.PARTY_JOINED_WEAK,
+                    t_start=t,
+                    t_end=t,
+                    subject=track_id,
+                    bag=None,
+                    party=party_id,
+                    evidence={"party": party_id},
+                )
+            )
         return True
 
     def try_join_strong(
@@ -231,6 +278,7 @@ class PartyManager:
         track_id: int,
         member_track: Sequence[Observation],
         candidate_track: Sequence[Observation],
+        events: EventLog | None = None,
     ) -> bool:
         """Promove a vínculo forte após co-movimento sustentado com um membro
         que já tem vínculo forte.
@@ -238,6 +286,10 @@ class PartyManager:
         O vínculo não é transitivo a partir de membros fracos: dois cúmplices —
         um que senta perto da vítima e outro que anda ao lado dele, longe dela —
         não podem obter posse da bagagem.
+
+        Não recebe `t`: o instante vem das próprias trajetórias, e o intervalo
+        do evento emitido é a janela de sobreposição entre elas. Recusa não
+        emite nada. Quando `events` é `None`, nada é emitido.
         """
         party = self._parties[party_id]
         if not member_track or not candidate_track:
@@ -268,6 +320,25 @@ class PartyManager:
 
         party.members[track_id] = Bond.STRONG
         self._party_of[track_id] = party_id
+
+        if events is not None:
+            max_separation_m = max(a.position.distance_to(b.position) for a, b in pairs)
+            events.emit(
+                Event(
+                    kind=EventKind.PARTY_JOINED_STRONG,
+                    t_start=pairs[0][1].t,
+                    t_end=pairs[-1][1].t,
+                    subject=track_id,
+                    bag=None,
+                    party=party_id,
+                    evidence={
+                        "extent_member_m": member_extent,
+                        "extent_candidate_m": candidate_extent,
+                        "overlap_s": pairs[-1][1].t - pairs[0][1].t,
+                        "max_separation_m": max_separation_m,
+                    },
+                )
+            )
         return True
 
     def same_party_strong(self, track_a: int, track_b: int) -> bool:
