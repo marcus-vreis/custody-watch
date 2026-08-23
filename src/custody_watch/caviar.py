@@ -190,4 +190,35 @@ def load_clip(
         yield number / fps, tracked
 
 
+def load_frames(
+    data_root: Path, scenario: str, fps: float = CAVIAR_FPS
+) -> Iterator[tuple[float, np.ndarray, list[TrackedDetection]]]:
+    """Como `load_clip`, mas entregando também a imagem BGR de cada frame.
+
+    Usado pelo recorte de clipe, que precisa dos pixels. O resto do pipeline
+    continua sem vê-los.
+    """
+    if scenario not in SCENARIOS:
+        raise ValueError(f"cenário desconhecido {scenario!r}; conhecidos {sorted(SCENARIOS)}")
+
+    jpegs = _load_jpeg_bytes(data_root / scenario / f"{scenario}_jpg.tar.gz")
+
+    for number, boxes in _parse_frames(data_root / scenario / SCENARIOS[scenario]):
+        if number not in jpegs:
+            continue
+        quadro = cv2.imdecode(np.frombuffer(jpegs[number], np.uint8), cv2.IMREAD_COLOR)
+        if quadro is None:
+            continue
+
+        tracked = [
+            TrackedDetection(
+                track_id=b.track_id + (BAG_ID_OFFSET if b.is_bag else 0),
+                cls="suitcase" if b.is_bag else "person",
+                bbox=b.bbox,
+            )
+            for b in boxes
+        ]
+        yield number / fps, quadro, tracked
+
+
 BAG_ID_OFFSET = 1000

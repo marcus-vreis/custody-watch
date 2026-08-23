@@ -54,6 +54,14 @@ class SessionResult:
     frames: int
     duration_s: float
     flags: FlagStore = field(default_factory=FlagStore)
+    links: dict[int, int] = field(default_factory=dict)
+    """Mapa de id bruto para canônico. O recorte de clipe precisa do inverso:
+    o alerta cita o id canônico, e os frames trazem os brutos."""
+
+    def raw_ids(self, canonical_id: int) -> set[int]:
+        brutos = {raw for raw, canon in self.links.items() if canon == canonical_id}
+        brutos.add(canonical_id)
+        return brutos
 
 
 def _nearest(people: Iterable[Observation], target) -> Observation | None:
@@ -315,6 +323,7 @@ def run_session(
         frames=session.frames,
         duration_s=session.t,
         flags=session.flags,
+        links=session.linker.links(),
     )
 
 
