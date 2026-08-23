@@ -536,3 +536,53 @@ def test_config_altera_o_limiar_de_entrada_tardia():
 
     p2 = manager_exigente.form_on_arrival([1])
     assert manager_exigente.try_join_strong(p2.party_id, 2, membro, candidato) is False
+
+
+def test_tolerancia_padrao_e_a_do_config():
+    """O teste da tolerancia passa `PartyConfig` explicito, entao exercita o
+    mecanismo e nao o default. Afrouxar TIME_TOLERANCE_S passaria despercebido.
+    """
+    # dt=2.0 e proposital: com amostras a cada 1s, um deslocamento de 0.9s nao
+    # sai da tolerancia -- so pareia com a amostra seguinte, a 0.1s. Espacar as
+    # amostras e o que faz o deslocamento de fato exceder a janela.
+    a = track(1, [(0.0, 0.0), (2.0, 0.0), (4.0, 0.0), (6.0, 0.0)], t0=0.0, dt=2.0)
+    dentro = track(2, [(0.5, 0.0), (2.5, 0.0), (4.5, 0.0), (6.5, 0.0)], t0=0.4, dt=2.0)
+    fora = track(3, [(0.5, 0.0), (2.5, 0.0), (4.5, 0.0), (6.5, 0.0)], t0=0.8, dt=2.0)
+
+    assert is_comoving(a, dentro) is True
+    assert is_comoving(a, fora) is False
+
+
+def test_artefato_correlacionado_produz_extensao_falsa():
+    """Por que o portao de plausibilidade existe, demonstrado aqui.
+
+    Dois sentados cujos pontos de apoio saltam juntos na mesma direcao: a caixa
+    da trajetoria cresce, a separacao nao muda, e a extensao conclui que os
+    dois cobriram terreno. `PlausibilityGate` corta o salto antes que ele
+    chegue aqui.
+    """
+    parados_a = [(0.0, 0.0)] * 4
+    parados_b = [(1.0, 0.0)] * 4
+    salto_a = [(8.0, 0.0)] * 4
+    salto_b = [(9.0, 0.0)] * 4
+
+    a = track(1, parados_a + salto_a)
+    b = track(2, parados_b + salto_b)
+
+    assert is_comoving(a, b) is True
+
+
+def test_intervalo_exatamente_no_limite_e_aceito():
+    """Instantes vem de `frame_index / fps`: 2.4 - 0.4 da 2.0000000000000004.
+
+    Sem folga de ponto flutuante, uma cadencia bem no limite e aceita ou
+    rejeitada conforme o erro acumulado -- comportamento que depende de onde o
+    video comecou a contar.
+    """
+    from custody_watch.party import MAX_GAP_S
+
+    a = track(1, [(0.0, 0.0), (2.0, 0.0), (4.0, 0.0), (6.0, 0.0)], t0=0.0, dt=MAX_GAP_S)
+    b = track(2, [(0.5, 0.0), (2.5, 0.0), (4.5, 0.0), (6.5, 0.0)], t0=0.4, dt=MAX_GAP_S)
+
+    assert (b[2].t - b[1].t) > MAX_GAP_S  # o erro de float e real, e so no 2o gap
+    assert is_comoving(a, b) is True

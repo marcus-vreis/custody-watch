@@ -106,4 +106,59 @@ def track_video(
         yield frame_index / frame_rate, tracked
 
 
-__all__ = ["TrackedDetection", "to_observations", "track_video", "video_fps"]
+MAX_OBSERVATION_SPEED_MS = 25.0
+
+
+class PlausibilityGate:
+    """Descarta observações que implicam velocidade impossível para uma pessoa.
+
+    Existe por um cenário que a revisão adversarial construiu: um artefato de
+    projeção **correlacionado** entre dois tracks — bounding boxes truncando
+    juntas quando alguém passa na frente das duas — faz os dois pontos de apoio
+    saltarem na mesma direção. A caixa da trajetória cresce, a separação não
+    muda, e `_extent` conclui que as duas pessoas cobriram terreno juntas sem
+    ninguém ter saído do lugar.
+
+    O limiar vem de medição, não de palpite. Nas quatro sequências do CAVIAR, a
+    velocidade quadro a quadro tem mediana de 1,34 m/s, p99 de 7,5 m/s e máximo
+    de 20,1 m/s — e esse máximo já é ruído de anotação, não movimento. O salto
+    do artefato descrito na revisão implicava 150 m/s. Em 25 m/s o portão pega o
+    artefato e não encosta em nada real: nas mesmas sequências, corta zero
+    observações.
+
+    Guarda estado por track e é descartado ao fim da sessão.
+    """
+
+    def __init__(self, max_speed_ms: float = MAX_OBSERVATION_SPEED_MS) -> None:
+        self._max_speed_ms = max_speed_ms
+        self._last: dict[int, Observation] = {}
+        self.rejected = 0
+
+    def accept(self, observation: Observation) -> bool:
+        anterior = self._last.get(observation.track_id)
+        if anterior is not None and observation.t > anterior.t:
+            velocidade = anterior.position.distance_to(observation.position) / (
+                observation.t - anterior.t
+            )
+            if velocidade > self._max_speed_ms:
+                # A observação anterior segue sendo a referência: aceitar a
+                # implausível como novo ponto de partida deixaria o salto
+                # passar em duas etapas.
+                self.rejected += 1
+                return False
+
+        self._last[observation.track_id] = observation
+        return True
+
+    def filter(self, observations: Iterable[Observation]) -> list[Observation]:
+        return [o for o in observations if self.accept(o)]
+
+
+__all__ = [
+    "MAX_OBSERVATION_SPEED_MS",
+    "PlausibilityGate",
+    "TrackedDetection",
+    "to_observations",
+    "track_video",
+    "video_fps",
+]

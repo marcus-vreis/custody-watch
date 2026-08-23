@@ -74,6 +74,7 @@ class PipelineConfig:
     contact_radius_m: float = 0.8
     proximity_radius_m: float = 2.0
     proximity_flag_s: float = 90.0
+    max_observation_speed_ms: float = 25.0
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,13 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         600.0,
         "abaixo de 10s qualquer passagem casual vira vinculo fraco, e o flag de "
         "quem so passou perto e atenuado sem motivo",
+    ),
+    "pipeline.max_observation_speed_ms": Bounds(
+        12.0,
+        100.0,
+        "abaixo de 12 m/s o portao comeca a cortar movimento real -- o p99.9 "
+        "medido no CAVIAR e 12.7 m/s; acima de 100 m/s ele deixa passar o "
+        "artefato de projecao correlacionado que produz extensao falsa",
     ),
     "pipeline.contact_radius_m": Bounds(
         0.3,

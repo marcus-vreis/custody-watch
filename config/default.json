@@ -43,6 +43,7 @@
     "history_window_s": 10.0,
     "contact_radius_m": 0.8,
     "proximity_radius_m": 2.0,
-    "proximity_flag_s": 90.0
+    "proximity_flag_s": 90.0,
+    "max_observation_speed_ms": 25.0
   }
 }
