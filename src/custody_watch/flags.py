@@ -14,13 +14,16 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable
 
+from .config import FlagConfig
 from .types import Bag, BagState, Flag, FlagLevel
 
-TAU_S = 900.0  # meia-vida do decaimento: 15 min
+DEFAULT_FLAGS = FlagConfig()
 
-WEIGHT_N1 = 1.0
-WEIGHT_N2 = 3.0
-WEIGHT_N3 = 10.0
+TAU_S = DEFAULT_FLAGS.tau_s  # meia-vida do decaimento: 15 min
+
+WEIGHT_N1 = DEFAULT_FLAGS.weight_n1
+WEIGHT_N2 = DEFAULT_FLAGS.weight_n2
+WEIGHT_N3 = DEFAULT_FLAGS.weight_n3
 
 
 def _timestamp(t: float) -> str:
@@ -37,7 +40,9 @@ def score(flags: Iterable[Flag], now: float, tau: float = TAU_S) -> float:
     return sum(f.weight * math.exp(-(now - f.t) / tau) for f in flags if f.t <= now)
 
 
-def flag_for_removal(bag: Bag, carrier_track: int, t: float) -> Flag | None:
+def flag_for_removal(
+    bag: Bag, carrier_track: int, t: float, config: FlagConfig = DEFAULT_FLAGS
+) -> Flag | None:
     """Emite N3 quando a bagagem sai com quem não é do grupo dono."""
     if bag.state is not BagState.RETIRADA_ESTRANHO:
         return None
@@ -58,12 +63,14 @@ def flag_for_removal(bag: Bag, carrier_track: int, t: float) -> Flag | None:
         person=carrier_track,
         bag=bag.bag_id,
         t=t,
-        weight=WEIGHT_N3,
+        weight=config.weight_n3,
         explanation=explanation,
     )
 
 
-def flag_proximity(person: int, bag: Bag, t: float, seconds_near: float) -> Flag:
+def flag_proximity(
+    person: int, bag: Bag, t: float, seconds_near: float, config: FlagConfig = DEFAULT_FLAGS
+) -> Flag:
     """N1: permanência prolongada junto a bagagem de outro grupo."""
     return Flag(
         kind="permanencia_bagagem_alheia",
@@ -71,7 +78,7 @@ def flag_proximity(person: int, bag: Bag, t: float, seconds_near: float) -> Flag
         person=person,
         bag=bag.bag_id,
         t=t,
-        weight=WEIGHT_N1,
+        weight=config.weight_n1,
         explanation=(
             f"Permaneceu {int(seconds_near)}s a menos de 2m da bagagem "
             f"{bag.bag_id}, de outro grupo, até {_timestamp(t)}."
@@ -79,7 +86,7 @@ def flag_proximity(person: int, bag: Bag, t: float, seconds_near: float) -> Flag
     )
 
 
-def flag_contact(person: int, bag: Bag, t: float) -> Flag:
+def flag_contact(person: int, bag: Bag, t: float, config: FlagConfig = DEFAULT_FLAGS) -> Flag:
     """N2: contato físico com bagagem de outro grupo."""
     return Flag(
         kind="contato_bagagem_alheia",
@@ -87,7 +94,7 @@ def flag_contact(person: int, bag: Bag, t: float) -> Flag:
         person=person,
         bag=bag.bag_id,
         t=t,
-        weight=WEIGHT_N2,
+        weight=config.weight_n2,
         explanation=(
             f"Tocou na bagagem {bag.bag_id}, do grupo {bag.owner_party}, em {_timestamp(t)}."
         ),
@@ -95,9 +102,9 @@ def flag_contact(person: int, bag: Bag, t: float) -> Flag:
 
 
 class FlagStore:
-    def __init__(self, tau: float = TAU_S) -> None:
+    def __init__(self, config: FlagConfig = DEFAULT_FLAGS) -> None:
         self._by_person: dict[int, list[Flag]] = defaultdict(list)
-        self._tau = tau
+        self._tau = config.tau_s
 
     def add(self, flag: Flag) -> None:
         self._by_person[flag.person].append(flag)
