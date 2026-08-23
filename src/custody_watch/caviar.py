@@ -26,14 +26,17 @@ grita furto onde não há furto, isso basta; para um `P_miss` publicável, não.
 
 from __future__ import annotations
 
+import tarfile
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from .ground_plane import GroundPlane
+from .reid import describe
 from .tracking import TrackedDetection
 
 CAVIAR_FPS = 25.0
@@ -125,8 +128,29 @@ def ground_plane(metres_per_pixel: float) -> GroundPlane:
     return GroundPlane(np.diag([metres_per_pixel, metres_per_pixel, 1.0]))
 
 
+def _load_jpeg_bytes(archive: Path) -> dict[int, bytes]:
+    """Índice de frame para JPEG cru, lido do tar numa passada.
+
+    Os bytes crus ocupam cerca de 30 MB por clipe; decodificados seriam 650 MB.
+    Decodificar sob demanda troca memória por CPU, que aqui sobra.
+    """
+    quadros: dict[int, bytes] = {}
+    with tarfile.open(archive, "r:gz") as tar:
+        for membro in tar:
+            if not membro.name.lower().endswith(".jpg"):
+                continue
+            digitos = "".join(c for c in Path(membro.name).stem if c.isdigit())
+            handle = tar.extractfile(membro)
+            if digitos and handle is not None:
+                quadros[int(digitos)] = handle.read()
+    return quadros
+
+
 def load_clip(
-    data_root: Path, scenario: str, fps: float = CAVIAR_FPS
+    data_root: Path,
+    scenario: str,
+    fps: float = CAVIAR_FPS,
+    with_appearance: bool = False,
 ) -> Iterator[tuple[float, list[TrackedDetection]]]:
     """Frames anotados como o tracker os entregaria.
 
@@ -137,15 +161,32 @@ def load_clip(
     if scenario not in SCENARIOS:
         raise ValueError(f"cenário desconhecido {scenario!r}; conhecidos {sorted(SCENARIOS)}")
 
+    jpegs: dict[int, bytes] = {}
+    if with_appearance:
+        jpegs = _load_jpeg_bytes(data_root / scenario / f"{scenario}_jpg.tar.gz")
+
     for number, boxes in _parse_frames(data_root / scenario / SCENARIOS[scenario]):
-        tracked = [
-            TrackedDetection(
-                track_id=b.track_id + (BAG_ID_OFFSET if b.is_bag else 0),
-                cls="suitcase" if b.is_bag else "person",
-                bbox=b.bbox,
+        quadro = None
+        if with_appearance and number in jpegs:
+            quadro = cv2.imdecode(np.frombuffer(jpegs[number], np.uint8), cv2.IMREAD_COLOR)
+
+        tracked = []
+        for b in boxes:
+            aparencia = None
+            if quadro is not None and not b.is_bag:
+                x0, y0, x1, y1 = (int(round(v)) for v in b.bbox)
+                recorte = quadro[max(y0, 0) : max(y1, 0), max(x0, 0) : max(x1, 0)]
+                if recorte.size:
+                    aparencia = describe(recorte)
+
+            tracked.append(
+                TrackedDetection(
+                    track_id=b.track_id + (BAG_ID_OFFSET if b.is_bag else 0),
+                    cls="suitcase" if b.is_bag else "person",
+                    bbox=b.bbox,
+                    appearance=aparencia,
+                )
             )
-            for b in boxes
-        ]
         yield number / fps, tracked
 
 

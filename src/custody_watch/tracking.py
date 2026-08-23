@@ -13,16 +13,23 @@ from pathlib import Path
 import cv2
 
 from .ground_plane import GroundPlane
+from .reid import Appearance
 from .types import Observation
 
 
 @dataclass(frozen=True)
 class TrackedDetection:
-    """Detecção com ID de track atribuído, ainda em pixels."""
+    """Detecção com ID de track atribuído, ainda em pixels.
+
+    `appearance` é opcional e só existe quando a fonte de frames consegue
+    produzi-la. É o último ponto do pipeline que sabe o que é um pixel: daqui
+    para frente a assinatura viaja como vetor opaco.
+    """
 
     track_id: int
     cls: str
     bbox: tuple[float, float, float, float]
+    appearance: Appearance | None = None
 
 
 def to_observations(

@@ -25,5 +25,14 @@
   "alerts": {
     "clip_margin_s": 10.0,
     "operator_hourly_budget": 25
+  },
+  "reid": {
+    "min_similarity": 0.9,
+    "min_margin": 0.03,
+    "max_gap_s": 30.0,
+    "max_speed_ms": 3.0,
+    "position_slack_m": 2.0,
+    "min_samples": 10,
+    "max_samples": 200
   }
 }

@@ -13,6 +13,9 @@ Mas torna possível medir algo que testa o design de forma mais dura — **quant
 alarmes de furto o sistema gera em vídeos onde ninguém furta nada**. Todo
 `bag_removed_by_stranger` aqui é, por construção, um alarme falso.
 
+O relatório compara as duas configurações porque a fragmentação de track era a
+causa dominante desses alarmes, e `reid.py` existe para atacá-la.
+
     uv run python scripts/run_caviar.py
 """
 
@@ -40,35 +43,39 @@ def main() -> int:
     print(f"escala estimada: {escala:.4f} m/px  (largura do frame ~= {384 * escala:.1f} m)")
     print("APROXIMADA: perspectiva ignorada, ver docstring de caviar.py\n")
 
-    cabecalho = (
-        f"{'clipe':<22}{'frames':>7}{'dur':>7}{'aband':>7}{'dono':>6}{'ESTRANHO':>10}{'fila':>6}"
+    largura = 22 + 6 + 17 + 28
+    print(f"{'':<28}{'-- sem re-ID --':>17}{'------- com re-ID -------':>28}")
+    print(
+        f"{'clipe':<22}{'dur':>6}{'dono':>8}{'ESTRANHO':>9}"
+        f"{'dono':>10}{'ESTRANHO':>9}{'religou':>9}"
     )
-    print(cabecalho)
-    print("-" * len(cabecalho))
+    print("-" * largura)
 
-    total_falsos = 0
-    total_minutos = 0.0
+    falsos = {False: 0, True: 0}
+    minutos = 0.0
 
     for scenario in SCENARIOS:
-        result = run_session(load_clip(DATA, scenario), plane)
+        linha = f"{scenario:<22}"
+        for reid in (False, True):
+            resultado = run_session(load_clip(DATA, scenario, with_appearance=reid), plane)
+            dono = len(resultado.events.of_kind(EventKind.BAG_REMOVED_BY_OWNER))
+            estranho = len(resultado.events.of_kind(EventKind.BAG_REMOVED_BY_STRANGER))
+            falsos[reid] += estranho
 
-        aband = len(result.events.of_kind(EventKind.BAG_UNATTENDED))
-        dono = len(result.events.of_kind(EventKind.BAG_REMOVED_BY_OWNER))
-        estranho = len(result.events.of_kind(EventKind.BAG_REMOVED_BY_STRANGER))
+            if reid:
+                religou = len(resultado.events.of_kind(EventKind.TRACK_RELINKED))
+                linha += f"{dono:>10}{estranho:>9}{religou:>9}"
+            else:
+                minutos += resultado.duration_s / 60.0
+                linha += f"{resultado.duration_s:>5.0f}s{dono:>8}{estranho:>9}"
+        print(linha)
 
-        total_falsos += estranho
-        total_minutos += result.duration_s / 60.0
-
-        print(
-            f"{scenario:<22}{result.frames:>7}{result.duration_s:>6.0f}s"
-            f"{aband:>7}{dono:>6}{estranho:>10}{len(result.queue):>6}"
-        )
-
-    print("-" * len(cabecalho))
-    print(f"\nvideo total: {total_minutos:.1f} min, com ZERO furtos reais")
-    print(f"alarmes de furto emitidos: {total_falsos}")
-    if total_minutos > 0:
-        print(f"taxa de falso alarme: {total_falsos / total_minutos:.2f} por minuto")
+    print("-" * largura)
+    print(f"\n{minutos:.1f} min de video, com ZERO furtos reais.")
+    print(f"alarmes falsos:  {falsos[False]} sem re-ID  ->  {falsos[True]} com re-ID")
+    print(
+        f"por minuto:      {falsos[False] / minutos:.2f}          ->  {falsos[True] / minutos:.2f}"
+    )
     return 0
 
 

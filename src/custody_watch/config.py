@@ -63,6 +63,17 @@ class FlagConfig:
 
 
 @dataclass(frozen=True)
+class ReidConfig:
+    min_similarity: float = 0.90
+    min_margin: float = 0.03
+    max_gap_s: float = 30.0
+    max_speed_ms: float = 3.0
+    position_slack_m: float = 2.0
+    min_samples: int = 10
+    max_samples: int = 200
+
+
+@dataclass(frozen=True)
 class AlertConfig:
     clip_margin_s: float = 10.0
     operator_hourly_budget: int = 25
@@ -75,6 +86,7 @@ class Config:
     registry: RegistryConfig = RegistryConfig()
     flags: FlagConfig = FlagConfig()
     alerts: AlertConfig = AlertConfig()
+    reid: ReidConfig = ReidConfig()
 
 
 SAFE_BOUNDS: dict[str, Bounds] = {
@@ -128,6 +140,34 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         0.2,
         2.0,
         "abaixo de 0.2m o jitter do detector é lido como a bagagem sendo carregada",
+    ),
+    "reid.min_similarity": Bounds(
+        0.70,
+        0.999,
+        "e apenas um piso de sanidade, nao o discriminador: medido no CAVIAR, a "
+        "similaridade de uma religacao correta varia de 0.92 a 0.99 conforme o "
+        "tamanho da amostra, entao um piso alto rejeita religacao correta de "
+        "perfil jovem. Quem separa e a margem",
+    ),
+    "reid.min_margin": Bounds(
+        0.01,
+        0.2,
+        "esta e a guarda que de fato separa. O fundo da cena domina o histograma "
+        "em recortes pequenos, entao toda similaridade fica alta e o que "
+        "discrimina e a distancia para o segundo colocado. Zero religa quase "
+        "qualquer par, e um ladrao herda o grupo da vitima -- o furto fica mudo",
+    ),
+    "reid.max_gap_s": Bounds(
+        2.0,
+        300.0,
+        "acima de 300s a pessoa teve tempo de trocar de roupa ou sair do predio; "
+        "abaixo de 2s a fragmentacao comum de tracker nao e alcancada",
+    ),
+    "reid.max_speed_ms": Bounds(
+        0.5,
+        10.0,
+        "acima de 10 m/s qualquer reaparicao na cena e considerada plausivel, "
+        "o que desliga a guarda fisica",
     ),
     "flags.tau_s": Bounds(
         60.0,

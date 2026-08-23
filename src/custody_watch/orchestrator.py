@@ -21,16 +21,17 @@ mais próxima da âncora no último frame em que a bagagem apareceu.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .alerts import AlertItem, build_queue
 from .bag_registry import BagRegistry
 from .config import Config
 from .custody import resolve_removal, update_attendance
-from .events import EventLog
+from .events import Event, EventKind, EventLog
 from .flags import FlagStore, flag_for_removal
 from .ground_plane import GroundPlane
 from .party import PartyManager
+from .reid import TrackLinker
 from .tracking import TrackedDetection, to_observations
 from .types import BAG_CLASSES, TERMINAL_BAG_STATES, BagState, Observation
 
@@ -66,6 +67,7 @@ def run_session(
     flag_store = FlagStore()
     parties = PartyManager(config.party)
     registry = BagRegistry(config.registry)
+    linker = TrackLinker(config.reid)
 
     missing: dict[int, int] = {}
     last_people: dict[int, list[Observation]] = {}
@@ -77,8 +79,42 @@ def run_session(
         last_t = t
 
         observations = to_observations(tracked, plane, t)
-        people = [o for o in observations if o.cls not in BAG_CLASSES]
+        aparencias = {d.track_id: d.appearance for d in tracked}
         bags = [o for o in observations if o.cls in BAG_CLASSES]
+
+        # O religador roda antes de qualquer decisão de posse: um track que é
+        # continuação de outro precisa herdar o grupo, não formar um novo.
+        people = []
+        for bruto in observations:
+            if bruto.cls in BAG_CLASSES:
+                continue
+
+            resolucao = linker.observe(
+                bruto.track_id, t, bruto.position, aparencias.get(bruto.track_id)
+            )
+            if not resolucao.settled:
+                # Perfil ainda ruidoso demais. O track existe, mas não recebe
+                # posse de bagagem até se estabilizar.
+                continue
+
+            if resolucao.linked_from is not None:
+                events.emit(
+                    Event(
+                        kind=EventKind.TRACK_RELINKED,
+                        t_start=t,
+                        t_end=t,
+                        subject=resolucao.canonical_id,
+                        bag=None,
+                        party=parties.party_of(resolucao.canonical_id),
+                        evidence={
+                            "from_track": bruto.track_id,
+                            "similarity": resolucao.similarity,
+                            "margin": resolucao.margin,
+                        },
+                    )
+                )
+
+            people.append(replace(bruto, track_id=resolucao.canonical_id))
 
         # Cada track novo começa como grupo de um. Unir exige evidência.
         for person in people:

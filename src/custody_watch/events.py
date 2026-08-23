@@ -33,6 +33,7 @@ class EventKind(StrEnum):
     PARTY_FORMED = "party_formed"
     PARTY_JOINED_STRONG = "party_joined_strong"
     PARTY_JOINED_WEAK = "party_joined_weak"
+    TRACK_RELINKED = "track_relinked"
 
 
 @dataclass(frozen=True)
