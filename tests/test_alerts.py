@@ -1,6 +1,7 @@
 import pytest
 
 from custody_watch.alerts import AlertQueue, build_queue
+from custody_watch.config import AlertConfig
 from custody_watch.flags import TAU_S, FlagStore
 from custody_watch.types import Flag, FlagLevel
 
@@ -77,7 +78,7 @@ def test_janela_de_clipe_cobre_o_flag_mais_grave():
     store = FlagStore()
     store.add(flag(1, FlagLevel.N3, weight=10.0, t=100.0))
 
-    item = build_queue(store, now=100.0, clip_margin_s=10.0)[0]
+    item = build_queue(store, now=100.0)[0]
 
     assert item.clip_start == 90.0
     assert item.clip_end == 110.0
@@ -87,7 +88,7 @@ def test_clip_start_nunca_e_negativo():
     store = FlagStore()
     store.add(flag(1, FlagLevel.N3, weight=10.0, t=3.0))
 
-    assert build_queue(store, now=3.0, clip_margin_s=10.0)[0].clip_start == 0.0
+    assert build_queue(store, now=3.0)[0].clip_start == 0.0
 
 
 def test_clipe_ancora_no_flag_mais_grave_nao_no_mais_recente():
@@ -96,7 +97,7 @@ def test_clipe_ancora_no_flag_mais_grave_nao_no_mais_recente():
     store.add(flag(1, FlagLevel.N3, weight=10.0, t=100.0))
     store.add(flag(1, FlagLevel.N2, weight=3.0, t=500.0))
 
-    item = build_queue(store, now=500.0, clip_margin_s=10.0)[0]
+    item = build_queue(store, now=500.0)[0]
 
     assert item.clip_start == 90.0
     assert item.clip_end == 110.0
@@ -110,3 +111,13 @@ def test_alert_queue_limita_ao_orcamento_do_operador():
     queue = AlertQueue(store).top(now=0.0, limit=3)
 
     assert [item.person for item in queue] == [9, 8, 7]
+
+
+def test_config_altera_a_margem_do_clipe():
+    store = FlagStore()
+    store.add(flag(1, FlagLevel.N3, weight=10.0, t=100.0))
+
+    item = build_queue(store, now=100.0, config=AlertConfig(clip_margin_s=30.0))[0]
+
+    assert item.clip_start == 70.0
+    assert item.clip_end == 130.0

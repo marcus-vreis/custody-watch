@@ -1,0 +1,48 @@
+{
+  "party": {
+    "proximity_m": 2.0,
+    "late_join_extent_m": 5.0,
+    "min_extent_m": 0.5,
+    "min_overlap_samples": 3,
+    "min_overlap_s": 2.0,
+    "max_gap_s": 2.0,
+    "time_tolerance_s": 0.5,
+    "weak_bond_s": 60.0
+  },
+  "custody": {
+    "unattended_distance_m": 3.0,
+    "unattended_time_s": 25.0
+  },
+  "registry": {
+    "moved_threshold_m": 0.5,
+    "ambiguity_radius_m": 1.0
+  },
+  "flags": {
+    "tau_s": 900.0,
+    "weight_n1": 1.0,
+    "weight_n2": 3.0,
+    "weight_n3": 10.0
+  },
+  "alerts": {
+    "clip_margin_s": 10.0,
+    "operator_hourly_budget": 25
+  },
+  "reid": {
+    "min_similarity": 0.9,
+    "min_margin": 0.03,
+    "max_gap_s": 30.0,
+    "max_speed_ms": 3.0,
+    "position_slack_m": 2.0,
+    "min_samples": 10,
+    "max_samples": 200
+  },
+  "pipeline": {
+    "owner_search_radius_m": 3.0,
+    "missing_frames_before_removal": 5,
+    "merge_every_frames": 25,
+    "history_window_s": 10.0,
+    "contact_radius_m": 0.8,
+    "proximity_radius_m": 2.0,
+    "proximity_flag_s": 90.0
+  }
+}

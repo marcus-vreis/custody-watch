@@ -15,12 +15,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .config import AlertConfig
 from .flags import FlagStore
 from .types import FlagLevel
 
-CLIP_MARGIN_S = 10.0
+DEFAULT_ALERTS = AlertConfig()
+
+CLIP_MARGIN_S = DEFAULT_ALERTS.clip_margin_s
 QUEUE_MIN_LEVEL = FlagLevel.N2
-OPERATOR_HOURLY_BUDGET = 25
+OPERATOR_HOURLY_BUDGET = DEFAULT_ALERTS.operator_hourly_budget
 
 
 @dataclass(frozen=True)
@@ -36,7 +39,7 @@ class AlertItem:
 def build_queue(
     store: FlagStore,
     now: float,
-    clip_margin_s: float = CLIP_MARGIN_S,
+    config: AlertConfig = DEFAULT_ALERTS,
     min_level: FlagLevel = QUEUE_MIN_LEVEL,
 ) -> list[AlertItem]:
     """Monta a fila ranqueada por score decrescente.
@@ -63,8 +66,8 @@ def build_queue(
                 person=person,
                 score=store.score(person, now),
                 top_level=top_level,
-                clip_start=max(0.0, gravest.t - clip_margin_s),
-                clip_end=gravest.t + clip_margin_s,
+                clip_start=max(0.0, gravest.t - config.clip_margin_s),
+                clip_end=gravest.t + config.clip_margin_s,
                 explanations=[f.explanation for f in flags],
             )
         )
@@ -73,13 +76,16 @@ def build_queue(
 
 
 class AlertQueue:
-    def __init__(self, store: FlagStore) -> None:
+    def __init__(self, store: FlagStore, config: AlertConfig = DEFAULT_ALERTS) -> None:
         self._store = store
+        self._config = config
 
-    def top(self, now: float, limit: int = OPERATOR_HOURLY_BUDGET) -> list[AlertItem]:
+    def top(self, now: float, limit: int | None = None) -> list[AlertItem]:
         """Os `limit` itens mais relevantes.
 
-        O default corresponde ao orçamento estimado de um operador por hora:
-        um clipe de 15s revisado em cerca de 30 segundos.
+        Quando `limit` não é informado, usa o orçamento estimado de um
+        operador por hora: um clipe de 15s revisado em cerca de 30 segundos.
         """
-        return build_queue(self._store, now)[:limit]
+        if limit is None:
+            limit = self._config.operator_hourly_budget
+        return build_queue(self._store, now, self._config)[:limit]

@@ -2,6 +2,7 @@ import math
 
 import pytest
 
+from custody_watch.config import FlagConfig
 from custody_watch.flags import (
     TAU_S,
     FlagStore,
@@ -131,3 +132,13 @@ def test_store_lista_as_pessoas_com_flag():
     store.add(Flag("k", FlagLevel.N1, person=5, bag=None, t=10.0, weight=1.0, explanation="x"))
 
     assert set(store.people()) == {1, 5}
+
+
+def test_config_altera_o_peso_do_flag():
+    bag = Bag(bag_id=2, anchor=Point(0.0, 0.0), owner_party=1)
+    bag.state = BagState.RETIRADA_ESTRANHO
+
+    flag = flag_for_removal(bag, carrier_track=99, t=42.0, config=FlagConfig(weight_n3=99.0))
+
+    assert flag is not None
+    assert flag.weight == 99.0

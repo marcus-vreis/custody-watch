@@ -31,16 +31,20 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from .config import PartyConfig
+from .events import Event, EventKind, EventLog
 from .types import Bond, Observation, Party
 
-PROXIMITY_M = 2.0
-LATE_JOIN_EXTENT_M = 5.0
-MIN_EXTENT_M = 0.5
-MIN_OVERLAP_SAMPLES = 3
-MIN_OVERLAP_S = 2.0
-MAX_GAP_S = 2.0
-TIME_TOLERANCE_S = 0.5
-WEAK_BOND_S = 60.0
+DEFAULT_PARTY = PartyConfig()
+
+PROXIMITY_M = DEFAULT_PARTY.proximity_m
+LATE_JOIN_EXTENT_M = DEFAULT_PARTY.late_join_extent_m
+MIN_EXTENT_M = DEFAULT_PARTY.min_extent_m
+MIN_OVERLAP_SAMPLES = DEFAULT_PARTY.min_overlap_samples
+MIN_OVERLAP_S = DEFAULT_PARTY.min_overlap_s
+MAX_GAP_S = DEFAULT_PARTY.max_gap_s
+TIME_TOLERANCE_S = DEFAULT_PARTY.time_tolerance_s
+WEAK_BOND_S = DEFAULT_PARTY.weak_bond_s
 
 
 def _extent(track: Sequence[Observation]) -> float:
@@ -108,8 +112,7 @@ def _pair_by_time(
 
 def _overlap_is_continuous(
     pairs: Sequence[tuple[Observation, Observation]],
-    min_overlap_s: float = MIN_OVERLAP_S,
-    max_gap_s: float = MAX_GAP_S,
+    config: PartyConfig = DEFAULT_PARTY,
 ) -> bool:
     """A sobreposição precisa ser contínua no tempo, não três fotografias.
 
@@ -123,20 +126,18 @@ def _overlap_is_continuous(
         return False
 
     times = [b.t for _, b in pairs]
-    if times[-1] - times[0] < min_overlap_s:
+    if times[-1] - times[0] < config.min_overlap_s:
         return False
     return all(
-        later - earlier <= max_gap_s for earlier, later in zip(times, times[1:], strict=False)
+        later - earlier <= config.max_gap_s
+        for earlier, later in zip(times, times[1:], strict=False)
     )
 
 
 def is_comoving(
     track_a: Sequence[Observation],
     track_b: Sequence[Observation],
-    min_extent_m: float = MIN_EXTENT_M,
-    max_separation_m: float = PROXIMITY_M,
-    min_overlap: int = MIN_OVERLAP_SAMPLES,
-    tolerance_s: float = TIME_TOLERANCE_S,
+    config: PartyConfig = DEFAULT_PARTY,
 ) -> bool:
     """Duas pessoas co-movem se andaram JUNTAS, no mesmo intervalo de tempo.
 
@@ -149,18 +150,18 @@ def is_comoving(
 
     Simétrica nos argumentos.
     """
-    pairs = _pair_by_time(track_a, track_b, tolerance_s)
-    if len(pairs) < min_overlap:
+    pairs = _pair_by_time(track_a, track_b, config.time_tolerance_s)
+    if len(pairs) < config.min_overlap_samples:
         return False
-    if not _overlap_is_continuous(pairs):
+    if not _overlap_is_continuous(pairs, config):
         return False
 
     paired_a = [a for a, _ in pairs]
     paired_b = [b for _, b in pairs]
-    if _extent(paired_a) < min_extent_m or _extent(paired_b) < min_extent_m:
+    if _extent(paired_a) < config.min_extent_m or _extent(paired_b) < config.min_extent_m:
         return False
 
-    return all(a.position.distance_to(b.position) <= max_separation_m for a, b in pairs)
+    return all(a.position.distance_to(b.position) <= config.proximity_m for a, b in pairs)
 
 
 def _single_track_id(track: Sequence[Observation]) -> int:
@@ -179,10 +180,11 @@ class PartyManager:
     alguém num grupo sem registrar o inverso.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config: PartyConfig = DEFAULT_PARTY) -> None:
         self._parties: dict[int, Party] = {}
         self._party_of: dict[int, int] = {}
         self._next_id = 1
+        self._config = config
 
     def get(self, party_id: int) -> Party | None:
         return self._parties.get(party_id)
@@ -190,12 +192,21 @@ class PartyManager:
     def party_of(self, track_id: int) -> int | None:
         return self._party_of.get(track_id)
 
-    def form_on_arrival(self, track_ids: Sequence[int]) -> Party:
+    def form_on_arrival(
+        self,
+        track_ids: Sequence[int],
+        t: float = 0.0,
+        events: EventLog | None = None,
+    ) -> Party:
         """Grupo formado na entrada da cena — vínculo forte.
 
         Aceita evidência mais fraca que a entrada tardia porque é o momento
         natural de formação e o custo de simular é alto: exigiria o atacante já
         estar acompanhando a vítima antes.
+
+        `t` é o instante do frame em que o grupo se formou; o default existe só
+        para não quebrar chamadas antigas — o orquestrador deve sempre passar o
+        instante real do frame. Quando `events` é `None`, nada é emitido.
         """
         if not track_ids:
             raise ValueError("um grupo precisa de ao menos um membro")
@@ -209,19 +220,56 @@ class PartyManager:
         for track_id in track_ids:
             self._party_of[track_id] = party.party_id
         self._next_id += 1
+
+        if events is not None:
+            events.emit(
+                Event(
+                    kind=EventKind.PARTY_FORMED,
+                    t_start=t,
+                    t_end=t,
+                    subject=None,
+                    bag=None,
+                    party=party.party_id,
+                    evidence={"members": sorted(track_ids)},
+                )
+            )
         return party
 
-    def join_weak(self, party_id: int, track_id: int) -> bool:
+    def join_weak(
+        self,
+        party_id: int,
+        track_id: int,
+        t: float = 0.0,
+        events: EventLog | None = None,
+    ) -> bool:
         """Proximidade estática. NÃO transfere posse — apenas atenua o flag.
 
         Recusa quem já tem grupo: sentar perto de estranhos não pode tirar
         ninguém da própria família.
+
+        `t` é o instante do frame; o default existe só para não quebrar
+        chamadas antigas — o orquestrador deve sempre passar o instante real do
+        frame. Recusa não emite nada: evento é registro do que aconteceu, não
+        do que foi cogitado. Quando `events` é `None`, nada é emitido.
         """
         if track_id in self._party_of:
             return False
 
         self._parties[party_id].members[track_id] = Bond.WEAK
         self._party_of[track_id] = party_id
+
+        if events is not None:
+            events.emit(
+                Event(
+                    kind=EventKind.PARTY_JOINED_WEAK,
+                    t_start=t,
+                    t_end=t,
+                    subject=track_id,
+                    bag=None,
+                    party=party_id,
+                    evidence={"party": party_id},
+                )
+            )
         return True
 
     def try_join_strong(
@@ -230,6 +278,7 @@ class PartyManager:
         track_id: int,
         member_track: Sequence[Observation],
         candidate_track: Sequence[Observation],
+        events: EventLog | None = None,
     ) -> bool:
         """Promove a vínculo forte após co-movimento sustentado com um membro
         que já tem vínculo forte.
@@ -237,6 +286,10 @@ class PartyManager:
         O vínculo não é transitivo a partir de membros fracos: dois cúmplices —
         um que senta perto da vítima e outro que anda ao lado dele, longe dela —
         não podem obter posse da bagagem.
+
+        Não recebe `t`: o instante vem das próprias trajetórias, e o intervalo
+        do evento emitido é a janela de sobreposição entre elas. Recusa não
+        emite nada. Quando `events` é `None`, nada é emitido.
         """
         party = self._parties[party_id]
         if not member_track or not candidate_track:
@@ -254,7 +307,7 @@ class PartyManager:
         if current is not None and current != party_id:
             return False
 
-        if not is_comoving(member_track, candidate_track):
+        if not is_comoving(member_track, candidate_track, self._config):
             return False
 
         pairs = _pair_by_time(member_track, candidate_track)
@@ -262,11 +315,30 @@ class PartyManager:
         candidate_extent = _extent([b for _, b in pairs])
         # Os dois precisam ter coberto terreno. Medir só o candidato deixaria
         # passar quem andou ao lado de um membro que não saiu do lugar.
-        if min(member_extent, candidate_extent) < LATE_JOIN_EXTENT_M:
+        if min(member_extent, candidate_extent) < self._config.late_join_extent_m:
             return False
 
         party.members[track_id] = Bond.STRONG
         self._party_of[track_id] = party_id
+
+        if events is not None:
+            max_separation_m = max(a.position.distance_to(b.position) for a, b in pairs)
+            events.emit(
+                Event(
+                    kind=EventKind.PARTY_JOINED_STRONG,
+                    t_start=pairs[0][1].t,
+                    t_end=pairs[-1][1].t,
+                    subject=track_id,
+                    bag=None,
+                    party=party_id,
+                    evidence={
+                        "extent_member_m": member_extent,
+                        "extent_candidate_m": candidate_extent,
+                        "overlap_s": pairs[-1][1].t - pairs[0][1].t,
+                        "max_separation_m": max_separation_m,
+                    },
+                )
+            )
         return True
 
     def same_party_strong(self, track_a: int, track_b: int) -> bool:

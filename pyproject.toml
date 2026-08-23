@@ -16,6 +16,8 @@ dependencies = [
     "numpy>=1.26",
     # Homography, Hungarian assignment for party/bag association.
     "scipy>=1.14",
+    # Recorte de clipe anotado em GIF. Vinha de carona pelo ultralytics.
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]

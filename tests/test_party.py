@@ -2,6 +2,7 @@ import random
 
 import pytest
 
+from custody_watch.config import PartyConfig
 from custody_watch.party import PartyManager, is_comoving
 from custody_watch.types import Bond, Observation, Point
 
@@ -208,8 +209,8 @@ def test_tolerancia_temporal_e_respeitada():
     a = track(1, [(0.0, 0.0), (2.0, 0.0), (4.0, 0.0)], t0=0.0, dt=1.0)
     b = track(2, [(0.5, 0.0), (2.5, 0.0), (4.5, 0.0)], t0=0.4, dt=1.0)
 
-    assert is_comoving(a, b, tolerance_s=0.5) is True
-    assert is_comoving(a, b, tolerance_s=0.1) is False
+    assert is_comoving(a, b, PartyConfig(time_tolerance_s=0.5)) is True
+    assert is_comoving(a, b, PartyConfig(time_tolerance_s=0.1)) is False
 
 
 def test_ida_e_volta_conta_como_deslocamento_conjunto():
@@ -410,7 +411,7 @@ def test_min_overlap_zero_nao_estoura_com_pares_vazios():
     a = track(1, [(0.0, 0.0), (3.0, 0.0), (6.0, 0.0)], t0=0.0)
     b = track(2, [(0.5, 0.0), (3.5, 0.0), (6.5, 0.0)], t0=600.0)
 
-    assert is_comoving(a, b, min_overlap=0) is False
+    assert is_comoving(a, b, PartyConfig(min_overlap_samples=0)) is False
 
 
 def test_track_vazio_nao_promove():
@@ -514,3 +515,24 @@ def test_same_party_strong_falso_para_grupos_diferentes():
 
     assert manager.same_party_strong(1, 2) is False
     assert manager.same_party_strong(1, 404) is False
+
+
+def test_config_altera_o_limiar_de_entrada_tardia():
+    """Sem este teste, o parâmetro `config` pode estar sendo ignorado.
+
+    Um co-movimento de 6m é aceito pelo default de 5m e recusado por um
+    limiar de 10m. Se os dois derem o mesmo resultado, a config não chegou
+    na decisão.
+    """
+    exigente = PartyConfig(late_join_extent_m=10.0)
+    manager_default = PartyManager()
+    manager_exigente = PartyManager(exigente)
+
+    membro = track(1, [(0.0, 0.0), (3.0, 0.0), (6.0, 0.0)])
+    candidato = track(2, [(0.5, 0.0), (3.5, 0.0), (6.5, 0.0)])
+
+    p1 = manager_default.form_on_arrival([1])
+    assert manager_default.try_join_strong(p1.party_id, 2, membro, candidato) is True
+
+    p2 = manager_exigente.form_on_arrival([1])
+    assert manager_exigente.try_join_strong(p2.party_id, 2, membro, candidato) is False
