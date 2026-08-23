@@ -1,0 +1,29 @@
+{
+  "party": {
+    "proximity_m": 2.0,
+    "late_join_extent_m": 5.0,
+    "min_extent_m": 0.5,
+    "min_overlap_samples": 3,
+    "min_overlap_s": 2.0,
+    "max_gap_s": 2.0,
+    "time_tolerance_s": 0.5
+  },
+  "custody": {
+    "unattended_distance_m": 3.0,
+    "unattended_time_s": 25.0
+  },
+  "registry": {
+    "moved_threshold_m": 0.5,
+    "ambiguity_radius_m": 1.0
+  },
+  "flags": {
+    "tau_s": 900.0,
+    "weight_n1": 1.0,
+    "weight_n2": 3.0,
+    "weight_n3": 10.0
+  },
+  "alerts": {
+    "clip_margin_s": 10.0,
+    "operator_hourly_budget": 25
+  }
+}
