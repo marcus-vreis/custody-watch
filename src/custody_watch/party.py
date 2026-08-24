@@ -114,7 +114,7 @@ def _pair_by_time(
     *e* vice-versa. Sem isso, várias observações de um track colapsariam sobre
     a mesma do outro, e a função não seria simétrica nos argumentos.
 
-    Pressupõe que os dois tracks compartilham uma grade de tempo: `track_video`
+    Pressupõe que os dois tracks compartilham uma grade de tempo: `VideoSource`
     carimba todas as observações de um frame com o mesmo instante. Grades
     defasadas produzem menos pares, nunca pares errados.
 

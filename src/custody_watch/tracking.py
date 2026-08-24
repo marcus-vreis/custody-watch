@@ -6,7 +6,7 @@ A partir daqui nada mais fala em pixels.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,42 +70,6 @@ def video_fps(video_path: Path) -> float:
     return fps
 
 
-def track_video(
-    video_path: Path,
-    weights: str = "yolo26s.pt",
-    tracker: str = "bytetrack.yaml",
-    fps: float | None = None,
-) -> Iterator[tuple[float, list[TrackedDetection]]]:
-    """Roda detector + tracker sobre um vídeo, produzindo (tempo, tracks) por frame.
-
-    Gerador para não carregar o vídeo inteiro em memória.
-    """
-    from ultralytics import YOLO
-
-    from .detectors.base import RELEVANT_CLASSES
-
-    frame_rate = fps if fps is not None else video_fps(video_path)
-
-    model = YOLO(weights)
-    results = model.track(
-        source=str(video_path), tracker=tracker, stream=True, persist=True, verbose=False
-    )
-
-    for frame_index, result in enumerate(results):
-        tracked: list[TrackedDetection] = []
-        if result.boxes is not None and result.boxes.id is not None:
-            names = result.names
-            for box, track_id in zip(result.boxes, result.boxes.id.tolist(), strict=True):
-                cls_name = names[int(box.cls)]
-                if cls_name not in RELEVANT_CLASSES:
-                    continue
-                x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
-                tracked.append(
-                    TrackedDetection(track_id=int(track_id), cls=cls_name, bbox=(x1, y1, x2, y2))
-                )
-        yield frame_index / frame_rate, tracked
-
-
 MAX_OBSERVATION_SPEED_MS = 25.0
 
 
@@ -159,6 +123,5 @@ __all__ = [
     "PlausibilityGate",
     "TrackedDetection",
     "to_observations",
-    "track_video",
     "video_fps",
 ]
