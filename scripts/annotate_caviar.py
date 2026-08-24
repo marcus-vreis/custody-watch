@@ -71,22 +71,39 @@ def _serie(
     return serie, ids
 
 
-def _primeira_corrida(serie: list[tuple[int, bool]], duracao_s: float) -> int | None:
-    """Primeiro frame de uma corrida de ausência que dura ao menos `duracao_s`.
+def _primeira_corrida(
+    serie: list[tuple[int, bool]], duracao_s: float
+) -> tuple[int, int, bool] | None:
+    """Primeira corrida de ausência que dura ao menos `duracao_s`.
+
+    Devolve `(inicio, fim, truncada)`. `truncada` é verdadeiro quando a corrida
+    ainda valia ao fim da série — ou seja, o fim é um limite inferior, não o
+    instante em que o estado acabou. A distinção é o que separa "o dono voltou"
+    de "a câmera parou", e é ela que impede que o comprimento do clipe vire um
+    positivo perdido.
 
     Não assume que os frames sejam contíguos: mede a corrida em tempo, pelo
     número do frame, e não em quantidade de amostras.
     """
     inicio: int | None = None
+    firme = False
 
     for numero, sozinha in serie:
         if not sozinha:
+            if firme:
+                assert inicio is not None
+                return inicio, numero, False
             inicio = None
             continue
+
         if inicio is None:
             inicio = numero
         if (numero - inicio) / CAVIAR_FPS >= duracao_s:
-            return inicio
+            firme = True
+
+    if firme:
+        assert inicio is not None
+        return inicio, serie[-1][0], True
 
     return None
 
@@ -114,19 +131,22 @@ def main() -> int:
         bag_id = min(ids)
 
         cru = next((n for n, sozinha in serie if sozinha), None)
-        firme = _primeira_corrida(serie, DEBOUNCE_S)
+        corrida = _primeira_corrida(serie, DEBOUNCE_S)
 
-        if firme is None:
+        if corrida is None:
             marca = "sem abandono sustentado" if cru is None else f"so oscilacao (frame {cru})"
             print(f"{scenario:<22} {marca}")
             save_annotations([], SAIDA / f"{scenario}.json", session=f"caviar/{scenario}")
             continue
 
-        abandono = firme / CAVIAR_FPS
-        ruido = "" if cru == firme else f"  (cru: {cru / CAVIAR_FPS:.1f}s, debounce moveu)"
+        inicio, fim, truncada = corrida
+        abandono = inicio / CAVIAR_FPS
+        termino = fim / CAVIAR_FPS
+        razao = "cortado pelo fim da anotacao" if truncada else "alguem voltou"
+        ruido = "" if cru == inicio else f"  (cru {cru / CAVIAR_FPS:.1f}s, debounce moveu)"
         print(
-            f"{scenario:<22} abandono em {abandono:6.1f}s  frame {firme:>5}  "
-            f"bagagem {bag_id}  presente {serie[0][0]}-{serie[-1][0]}{ruido}"
+            f"{scenario:<22} {abandono:6.1f}s -> {termino:6.1f}s "
+            f"({termino - abandono:5.1f}s, {razao})  bagagem {bag_id}{ruido}"
         )
 
         save_annotations(
@@ -134,10 +154,13 @@ def main() -> int:
                 GroundTruthEvent(
                     kind=EventKind.BAG_UNATTENDED,
                     t=abandono,
+                    t_end=termino,
+                    truncated=truncada,
                     bag=bag_id,
                     note=(
-                        f"derivado do ground truth XML: inicio da primeira corrida de "
-                        f"{DEBOUNCE_S}s sem pessoa a menos de {limite}m da bagagem"
+                        f"derivado do ground truth XML: corrida de ao menos "
+                        f"{DEBOUNCE_S}s sem pessoa a menos de {limite}m da bagagem, "
+                        f"encerrada porque {razao}"
                     ),
                 )
             ],

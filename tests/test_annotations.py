@@ -164,3 +164,58 @@ def test_gravacao_de_controle_conta_espurios_com_kinds_explicito():
 
     assert resultado.total_positives == 0
     assert len(resultado.spurious) == 1
+
+
+def test_round_trip_preserva_fim_do_estado(tmp_path):
+    """BAG_UNATTENDED e um estado, nao um instante: sem a duracao nao da para
+    julgar se o sistema deveria te-lo emitido."""
+    eventos = [GroundTruthEvent(kind=EventKind.BAG_UNATTENDED, t=20.0, t_end=95.0, note="x")]
+    caminho = tmp_path / "a.json"
+
+    save_annotations(eventos, caminho, session="s")
+
+    assert load_annotations(caminho)[0].t_end == 95.0
+
+
+def test_estado_sem_fim_carrega_como_none(tmp_path):
+    """None nao e zero: significa que o estado ainda valia quando o material
+    acabou, e a duracao e um limite inferior."""
+    caminho = tmp_path / "a.json"
+    caminho.write_text(
+        json.dumps({"session": "s", "events": [{"kind": "bag_unattended", "t": 20.0}]}),
+        encoding="utf-8",
+    )
+
+    assert load_annotations(caminho)[0].t_end is None
+
+
+def estado(t: float, t_end: float | None, truncated: bool = False) -> GroundTruthEvent:
+    return GroundTruthEvent(kind=EventKind.BAG_UNATTENDED, t=t, t_end=t_end, truncated=truncated)
+
+
+def test_estado_longo_o_bastante_e_positivo():
+    assert estado(20.0, 60.0).sustained_for(25.0) is True
+
+
+def test_estado_curto_que_acabou_de_verdade_nao_e_instancia():
+    """O dono voltou aos 30s. Um abandono de 10s nao e o evento que o sistema
+    afirma detectar com limiar de 25s, entao nao e positivo perdido."""
+    assert estado(20.0, 30.0).sustained_for(25.0) is False
+
+
+def test_estado_curto_e_truncado_nao_tem_resposta():
+    """A camera parou aos 30s. O abandono pode ter durado uma hora. Contar como
+    perdido inventaria um P_miss ruim a partir do comprimento do clipe."""
+    assert estado(20.0, 30.0, truncated=True).sustained_for(25.0) is None
+
+
+def test_truncado_que_ja_passou_do_limiar_e_positivo():
+    """O que veio depois do corte nao muda o que ja aconteceu antes dele."""
+    assert estado(20.0, 60.0, truncated=True).sustained_for(25.0) is True
+
+
+def test_round_trip_preserva_truncamento(tmp_path):
+    caminho = tmp_path / "a.json"
+    save_annotations([estado(20.0, 30.0, truncated=True)], caminho, session="s")
+
+    assert load_annotations(caminho) == [estado(20.0, 30.0, truncated=True)]

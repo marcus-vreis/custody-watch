@@ -21,11 +21,43 @@ DEFAULT_SLACK_BEFORE_S = 1.0
 
 @dataclass(frozen=True)
 class GroundTruthEvent:
+    """Um evento anotado à mão, ou derivado de anotação existente.
+
+    `t_end` existe porque nem todo evento é instantâneo. `BAG_UNATTENDED` é um
+    **estado**, e o sistema só o emite depois de `unattended_time_s` de duração
+    — então saber quando o estado começou não basta para julgar se o sistema
+    deveria tê-lo emitido. Sem a duração, um abandono de 5s e um de 5 minutos
+    são indistinguíveis na anotação, e o primeiro entra na conta como positivo
+    perdido quando na verdade nunca foi instância do evento.
+
+    `truncated` distingue as duas razões pelas quais um estado para de valer.
+    Se o dono voltou, o estado acabou de verdade e `t_end - t` é a duração. Se
+    a observação acabou, `t_end - t` é apenas um limite inferior. A diferença
+    separa "não aconteceu" de "não dá para saber" — e sem ela a segunda entra
+    na conta como positivo perdido, que é a forma mais fácil de inventar um
+    P_miss ruim.
+    """
+
     kind: EventKind
     t: float
+    t_end: float | None = None
+    truncated: bool = False
     bag: int | None = None
     subject: int | None = None
     note: str = ""
+
+    def sustained_for(self, seconds: float) -> bool | None:
+        """O estado durou ao menos `seconds`? `None` quando não dá para saber.
+
+        Um estado truncado que já passou do limiar é positivo apesar do corte:
+        o que veio depois não muda o que já aconteceu. Truncado e abaixo do
+        limiar é a única combinação sem resposta.
+        """
+        if self.t_end is None:
+            return None
+        if self.t_end - self.t >= seconds:
+            return True
+        return None if self.truncated else False
 
 
 @dataclass(frozen=True)
@@ -48,6 +80,8 @@ def save_annotations(events: list[GroundTruthEvent], path: Path | str, session: 
             {
                 "kind": e.kind.value,
                 "t": e.t,
+                "t_end": e.t_end,
+                "truncated": e.truncated,
                 "bag": e.bag,
                 "subject": e.subject,
                 "note": e.note,
@@ -70,6 +104,8 @@ def load_annotations(path: Path | str) -> list[GroundTruthEvent]:
         GroundTruthEvent(
             kind=EventKind(item["kind"]),
             t=float(item["t"]),
+            t_end=None if item.get("t_end") is None else float(item["t_end"]),
+            truncated=bool(item.get("truncated", False)),
             bag=item.get("bag"),
             subject=item.get("subject"),
             note=item.get("note", ""),
