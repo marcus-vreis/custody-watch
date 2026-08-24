@@ -85,3 +85,35 @@ def test_operating_point_reporta_rfa_efetivo():
     point: OperatingPoint = p_miss_at_rfa(events, video_minutes=10.0, target_rfa=0.1)
 
     assert point.rfa == pytest.approx(0.1)
+
+
+def test_positivo_nunca_detectado_conta_no_p_miss():
+    """O bug que so aparece ao conectar ground truth real.
+
+    Derivar o total de positivos da lista de eventos ignora quem o sistema
+    nunca detectou: o positivo perdido nao esta la para ser contado. O P_miss
+    sai sistematicamente subestimado, e quanto pior o sistema, mais otimista o
+    numero.
+    """
+    eventos = [ScoredEvent(score=9.0, is_true_event=True)]
+
+    derivado = p_miss_at_rfa(eventos, video_minutes=10.0, target_rfa=0.1)
+    real = p_miss_at_rfa(eventos, video_minutes=10.0, target_rfa=0.1, total_positives=4)
+
+    assert derivado.p_miss == pytest.approx(0.0)
+    assert real.p_miss == pytest.approx(0.75)
+
+
+def test_total_positives_menor_que_os_detectados_e_rejeitado():
+    eventos = [
+        ScoredEvent(score=9.0, is_true_event=True),
+        ScoredEvent(score=8.0, is_true_event=True),
+    ]
+
+    with pytest.raises(ValueError, match="total_positives"):
+        p_miss_at_rfa(eventos, video_minutes=10.0, target_rfa=0.5, total_positives=1)
+
+
+def test_total_positives_zero_e_rejeitado():
+    with pytest.raises(ValueError, match="nenhum evento verdadeiro"):
+        p_miss_at_rfa([], video_minutes=10.0, target_rfa=0.1, total_positives=0)

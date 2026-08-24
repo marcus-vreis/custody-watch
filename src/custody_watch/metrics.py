@@ -25,17 +25,40 @@ class OperatingPoint:
 
 
 def p_miss_at_rfa(
-    events: Sequence[ScoredEvent], video_minutes: float, target_rfa: float
+    events: Sequence[ScoredEvent],
+    video_minutes: float,
+    target_rfa: float,
+    total_positives: int | None = None,
 ) -> OperatingPoint:
     """Menor P_miss alcançável sem estourar `target_rfa` falsos alarmes/minuto.
 
     Varre os limiares candidatos do mais restritivo ao mais permissivo e
     devolve o ponto de operação mais barato que atinge o melhor P_miss.
+
+    `total_positives` existe porque derivar a contagem da própria lista ignora
+    o positivo que o sistema **nunca detectou** — ele não está lá para ser
+    contado, e o P_miss sai subestimado. Quanto pior o sistema, mais otimista
+    o número.
+
+    Quando `None`, deriva como antes: é o caminho das listas sintéticas, onde
+    todo positivo está presente por construção. O caminho de ground truth passa
+    a contagem real, vinda do arquivo de anotação.
     """
     if video_minutes <= 0:
         raise ValueError("video_minutes deve ser positivo")
 
-    total_true = sum(1 for e in events if e.is_true_event)
+    detectados = sum(1 for e in events if e.is_true_event)
+
+    if total_positives is None:
+        total_true = detectados
+    elif total_positives < detectados:
+        raise ValueError(
+            f"total_positives ({total_positives}) menor que os {detectados} "
+            f"positivos presentes na lista"
+        )
+    else:
+        total_true = total_positives
+
     if total_true == 0:
         raise ValueError("nenhum evento verdadeiro no ground truth")
 
