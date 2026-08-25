@@ -11,7 +11,8 @@
   },
   "custody": {
     "unattended_distance_m": 3.0,
-    "unattended_time_s": 25.0
+    "unattended_time_s": 25.0,
+    "max_occlusion_s": 30.0
   },
   "registry": {
     "moved_threshold_m": 0.5,
@@ -38,7 +39,7 @@
   },
   "pipeline": {
     "owner_search_radius_m": 3.0,
-    "missing_frames_before_removal": 5,
+    "missing_frames_before_occluded": 5,
     "merge_every_frames": 25,
     "history_window_s": 10.0,
     "contact_radius_m": 0.8,

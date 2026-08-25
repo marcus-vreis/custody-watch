@@ -274,7 +274,7 @@ class _Session:
                 continue
 
             self.missing[bag.bag_id] = self.missing.get(bag.bag_id, 0) + 1
-            if self.missing[bag.bag_id] < self.config.pipeline.missing_frames_before_removal:
+            if self.missing[bag.bag_id] < self.config.pipeline.missing_frames_before_occluded:
                 continue
 
             # Quem está em cena agora tem preferência: alguém que apareceu no

@@ -8,6 +8,7 @@ from custody_watch.config import (
     SAFE_BOUNDS,
     Config,
     UnsafeValueError,
+    _resolve,
     load_config,
 )
 
@@ -193,3 +194,46 @@ def test_config_e_imutavel():
     config = Config()
     with pytest.raises(FrozenInstanceError):
         config.party.proximity_m = 99.0
+
+
+def test_max_occlusion_curto_demais_e_recusado():
+    """Abaixo de 5s, alguem parado em frente a bagagem apaga a custodia e o
+    falso alarme de retirada volta -- que e o defeito que este limiar existe
+    para fechar."""
+    with pytest.raises(UnsafeValueError, match="custody.max_occlusion_s"):
+        _resolve("custody.max_occlusion_s", 2.0)
+
+
+def test_max_occlusion_longo_demais_e_recusado():
+    with pytest.raises(UnsafeValueError, match="custody.max_occlusion_s"):
+        _resolve("custody.max_occlusion_s", 600.0)
+
+
+def test_erro_de_max_occlusion_nomeia_o_ataque():
+    """Mensagem de erro de config e documentacao: precisa dizer o que o limite
+    previne, nao so que o numero e invalido."""
+    with pytest.raises(UnsafeValueError, match="ladrão já saiu"):
+        _resolve("custody.max_occlusion_s", 600.0)
+
+
+def test_missing_frames_tem_faixa_segura():
+    """A 5 quadros esse limiar disparava um N3 falso contra quem passava na
+    frente da bagagem. Limiar relevante a ataque precisa de faixa declarada."""
+    with pytest.raises(UnsafeValueError, match="missing_frames_before_occluded"):
+        _resolve("pipeline.missing_frames_before_occluded", 1)
+
+    with pytest.raises(UnsafeValueError, match="missing_frames_before_occluded"):
+        _resolve("pipeline.missing_frames_before_occluded", 200)
+
+
+def test_nome_antigo_de_missing_frames_falha_alto(tmp_path):
+    """Renomear campo e melhor que manter nome que descreve comportamento
+    removido. load_config ja recusa campo desconhecido, entao a renomeacao
+    nao passa em silencio."""
+    caminho = tmp_path / "c.json"
+    caminho.write_text(
+        json.dumps({"pipeline": {"missing_frames_before_removal": 5}}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="campo desconhecido"):
+        load_config(caminho)
