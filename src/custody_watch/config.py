@@ -48,6 +48,7 @@ class CustodyConfig:
     unattended_distance_m: float = 3.0
     unattended_time_s: float = 25.0
     max_occlusion_s: float = 30.0
+    carry_confirm_s: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,14 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         "abaixo de 5s, alguém parado em frente à bagagem apaga a custódia e o "
         "falso alarme de retirada volta; acima de 120s o ladrão já saiu do "
         "prédio antes de o evento existir",
+    ),
+    "custody.carry_confirm_s": Bounds(
+        0.2,
+        10.0,
+        "abaixo de 0.2s um único salto de projeção declara furto contra quem "
+        "estiver por perto — é o defeito que este projeto fechou na porta do "
+        "desaparecimento e reabriria na do movimento; acima de 10s o ladrão "
+        "sai de quadro antes de o evento existir",
     ),
     "registry.moved_threshold_m": Bounds(
         0.2,

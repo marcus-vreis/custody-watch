@@ -51,7 +51,12 @@ class ClipRequest:
     start_s: float
     end_s: float
     person_ids: frozenset[int]
-    bag_id: int | None
+    bag_ids: frozenset[int]
+    """Todo track bruto que pode responder pela bagagem sinalizada dentro da
+    janela do clipe -- o canônico e qualquer um religado a ele por
+    `adopt_occluded`. Uma readoção sob oclusão faz o vídeo trazer um
+    `track_id` diferente do `bag_id` citado no evento; um único inteiro aqui
+    perderia a caixa assim que a janela cruzasse uma readoção."""
     output: Path
 
 
@@ -59,7 +64,7 @@ def _desenhar(
     imagem: Image.Image,
     boxes: Iterable[TrackedDetection],
     person_ids: frozenset[int],
-    bag_id: int | None,
+    bag_ids: frozenset[int],
     escala: int,
 ) -> Image.Image:
     tela = imagem.resize((imagem.width * escala, imagem.height * escala), Image.NEAREST)
@@ -70,7 +75,7 @@ def _desenhar(
 
         if box.track_id in person_ids:
             cor, rotulo, espessura = COR_SUSPEITO, "pessoa sinalizada", 3
-        elif bag_id is not None and box.track_id == bag_id:
+        elif box.track_id in bag_ids:
             cor, rotulo, espessura = COR_BAGAGEM, "bagagem", 3
         else:
             cor, rotulo, espessura = COR_NEUTRA, "", 1
@@ -112,7 +117,7 @@ def render_clip(
 
         proximo = t + passo
         rgb = Image.fromarray(imagem[:, :, ::-1])
-        recortados.append(_desenhar(rgb, boxes, request.person_ids, request.bag_id, scale))
+        recortados.append(_desenhar(rgb, boxes, request.person_ids, request.bag_ids, scale))
 
     if not recortados:
         return None

@@ -112,6 +112,17 @@ class Bag:
     a essa altura quem levou a bagagem já saiu de perto, e quem sobrou é um
     inocente qualquer.
     """
+    moved_since: float | None = None
+    """Instante em que a bagagem passou a ser vista longe da âncora.
+
+    Deslocamento de um quadro só não é bagagem sendo levada — é ruído de
+    projeção. Meio metro são cerca de nove pixels na escala do CAVIAR, e a
+    projeção ignora perspectiva, então o erro cresce com a profundidade.
+
+    O caminho de desaparecimento já espera antes de decidir. Este espera pelo
+    mesmo motivo: no instante do movimento a informação que separa artefato de
+    furto ainda não existe.
+    """
 
     @property
     def is_orphan(self) -> bool:

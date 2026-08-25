@@ -365,12 +365,19 @@ def test_furto_em_plena_vista_e_visto():
     """`has_moved` existia, era testado, e nunca era chamado por `src/`. A
     remoção só era detectada por DESAPARECIMENTO, então uma bagagem carregada
     embora continuava sendo detectada todo frame, nunca entrava no caminho, e
-    `observe()` movia a âncora junto com o ladrão."""
-    resultado = run_session(cena_com_furto(), PLANO, Config())
+    `observe()` movia a âncora junto com o ladrão.
+
+    O ladrão encosta na bagagem aos 50s. O evento não sai mais nesse instante:
+    `carry_confirm_s` (1s por padrão) precisa se sustentar antes de decidir --
+    é a mesma espera que o caminho de desaparecimento já faz, aplicada ao
+    movimento -- então o centro esperado desloca por esse valor.
+    """
+    config = Config()
+    resultado = run_session(cena_com_furto(), PLANO, config)
 
     (furto,) = tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER)
     assert furto.subject == LADRAO
-    assert furto.t_start == pytest.approx(50.0, abs=1.0)
+    assert furto.t_start == pytest.approx(50.0 + config.custody.carry_confirm_s, abs=1.0)
 
 
 def test_a_fila_ranqueia_o_ladrao_acima_do_inocente():
@@ -428,3 +435,141 @@ def test_carry_away_nao_inunda_flags_por_quadro():
         f for f in resultado.flags.for_person(LADRAO) if f.kind == "retirada_por_estranho"
     ]
     assert len(flags_de_retirada) == 1
+
+
+# --- decidir no instante do movimento é o mesmo defeito ------------------------
+
+VIZINHO = 8
+
+
+def salto_de_projecao(*, duracao_s: float = 60.0, salto_s: float = 1 / FPS):
+    """Bagagem parada em (10, 10) cuja projeção salta 0.6m por `salto_s` aos
+    20s e volta. Um vizinho inocente está parado a 2m dela desde os 15s.
+
+    Meio metro são cerca de nove pixels na escala medida do CAVIAR, e
+    `caviar.py` ignora perspectiva, então o erro métrico cresce com a
+    profundidade. `PlausibilityGate` não pega: 0.6m num quadro são 15 m/s,
+    abaixo do limite de 25.
+    """
+    for i in range(int(duracao_s * FPS)):
+        t = i / FPS
+        det = [TrackedDetection(DONO, "person", caixa(dono_x(t), 11.0, 170))]
+
+        if t < 4.0:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(6.0 + t, 11.0, 55)))
+            yield t, det
+            continue
+
+        if t >= 15.0:
+            det.append(TrackedDetection(VIZINHO, "person", caixa(12.0, 10.0, 170)))
+
+        x = 10.6 if 20.0 <= t < 20.0 + salto_s else 10.0
+        det.append(TrackedDetection(BAG, "suitcase", caixa(x, 10.0, 55)))
+        yield t, det
+
+
+def anda_sozinha(duracao_s: float = 60.0):
+    """A projeção da bagagem salta 0.6m aos 20s e FICA lá, sem ninguém a menos
+    de 3m. Bagagem que anda sozinha é mais provavelmente artefato que bagagem
+    levitando."""
+    for i in range(int(duracao_s * FPS)):
+        t = i / FPS
+        det = [TrackedDetection(DONO, "person", caixa(dono_x(t), 11.0, 170))]
+
+        if t < 4.0:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(6.0 + t, 11.0, 55)))
+            yield t, det
+            continue
+
+        det.append(TrackedDetection(BAG, "suitcase", caixa(10.6 if t >= 20.0 else 10.0, 10.0, 55)))
+        yield t, det
+
+
+def test_salto_de_projecao_de_um_quadro_nao_e_furto():
+    """O conserto de oclusão fechou "decidir no instante do sumiço" e reabriu
+    "decidir no instante do movimento": `carry_away` resolvia na PRIMEIRA
+    amostra além do limiar, sem esperar nada.
+
+    Medido antes desta guarda: um único salto de 0.6m aos 20s emitia
+    `bag_removed_by_stranger` contra o vizinho inocente, com N3 na fila -- e o
+    `bag_unattended` verdadeiro, que sai aos 32.9s, desaparecia junto porque a
+    bagagem virava terminal.
+    """
+    resultado = run_session(salto_de_projecao(), PLANO, Config())
+
+    assert tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER) == []
+    assert tipos(resultado, EventKind.BAG_REMOVED_BY_OWNER) == []
+    assert resultado.queue == []
+    assert len(tipos(resultado, EventKind.BAG_UNATTENDED)) == 1
+
+
+def test_bagagem_que_anda_sozinha_diz_por_que_morreu():
+    """P3 manda suprimir o alerta, e suprime. Mas em silêncio ninguém
+    reconstrói por que a bagagem morreu: era o único caminho do código que
+    marcava AMBIGUA sem emitir evento nenhum.
+
+    A evidência carrega os números que decidiram, como todo o resto do log.
+    """
+    resultado = run_session(anda_sozinha(), PLANO, Config())
+
+    (ambigua,) = tipos(resultado, EventKind.BAG_AMBIGUOUS)
+    assert ambigua.evidence["moved_m"] == pytest.approx(0.6, abs=0.01)
+    assert ambigua.evidence["nearest_person_m"] > Config().pipeline.owner_search_radius_m
+    assert ambigua.evidence["anchor"] == pytest.approx([10.0, 10.0], abs=0.01)
+    assert resultado.queue == []
+
+
+def test_readocao_ambigua_nao_cria_bagagem_fantasma():
+    """A recusa por ambiguidade vale para o TRACK, não para o quadro.
+
+    Marcar as vizinhas como AMBIGUA tira as duas do alcance de
+    `occluded_near`, então o mesmo track voltava no quadro seguinte, não
+    encontrava candidata nenhuma, e se registrava como bagagem nova -- no
+    exato ponto declarado incerto, pronta para receber posse por proximidade
+    e virar acusação. Medido: um terceiro `bag_appeared`, e num cenário com
+    alguém levando essa fantasma, um N3.
+    """
+    resultado = run_session(duas_perto_ocluidas(), PLANO, Config())
+
+    aparecimentos = tipos(resultado, EventKind.BAG_APPEARED)
+    assert {e.bag for e in aparecimentos} == {BAG_A, BAG_B}
+    assert len(tipos(resultado, EventKind.BAG_AMBIGUOUS)) == 1
+
+
+def test_timeout_limpa_o_estado_de_oclusao():
+    """`resolve_occlusion_timeout` marcava AMBIGUA e voltava sem limpar
+    `occluded_since`. `resolve_removals` passa a pular a bagagem, mas
+    `observe_bags` não -- se ela reaparecesse, `end_occlusion` disparava e
+    emitia um segundo evento sobre um intervalo que o timeout já resolvera.
+
+    Medido: `bag_ambiguous` 30.2-60.2s e `bag_occluded` 30.2-70.0s, dois
+    eventos sobre o mesmo `t_start`, o segundo relatando uma oclusão de 39.8s
+    que o primeiro já tinha encerrado.
+    """
+
+    def some_e_volta_tarde(duracao_s: float = 90.0):
+        for i in range(int(duracao_s * FPS)):
+            t = i / FPS
+            det = [TrackedDetection(DONO, "person", caixa(dono_x(t), 11.0, 170))]
+            if t < 4.0:
+                det.append(TrackedDetection(BAG, "suitcase", caixa(6.0 + t, 11.0, 55)))
+                yield t, det
+                continue
+            if t < 30.0 or t >= 70.0:
+                det.append(TrackedDetection(BAG, "suitcase", caixa(10.0, 10.0, 55)))
+            yield t, det
+
+    resultado = run_session(some_e_volta_tarde(), PLANO, Config())
+
+    assert len(tipos(resultado, EventKind.BAG_AMBIGUOUS)) == 1
+    assert tipos(resultado, EventKind.BAG_OCCLUDED) == []
+
+
+def test_readocao_e_exposta_para_o_recorte_de_clipe():
+    """O alerta cita o `bag_id` canônico, mas os quadros do vídeo trazem o
+    track vigente. Sem o mapa inverso o clipe do operador fica sem caixa na
+    bagagem -- exatamente no caso que este trabalho existe para tratar."""
+    resultado = run_session(cena(1.0, bag_id_apos=901), PLANO, Config())
+
+    assert resultado.bag_links == {901: BAG}
+    assert resultado.raw_bag_ids(BAG) == {BAG, 901}

@@ -50,6 +50,11 @@ def _bag_bruto(resultado: SessionResult) -> int | None:
 
 def _itens(resultado: SessionResult, cenario: str) -> list[ReviewItem]:
     bag = _bag_bruto(resultado)
+    # `bag` é o bag_id canônico, mas os frames podem trazer um track diferente
+    # depois de uma readoção sob oclusão (Finding 5) -- `raw_bag_ids` traz
+    # todo track que já respondeu por ele, para o clipe destacar a caixa
+    # certa qualquer que seja o id vigente na janela recortada.
+    bag_ids = frozenset(resultado.raw_bag_ids(bag)) if bag is not None else frozenset()
     itens: list[ReviewItem] = []
 
     for posicao, alerta in enumerate(resultado.queue, start=1):
@@ -60,7 +65,7 @@ def _itens(resultado: SessionResult, cenario: str) -> list[ReviewItem]:
                 start_s=alerta.clip_start,
                 end_s=alerta.clip_end,
                 person_ids=frozenset(resultado.raw_ids(alerta.person)),
-                bag_id=bag,
+                bag_ids=bag_ids,
                 output=destino,
             ),
         )

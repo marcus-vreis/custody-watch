@@ -12,7 +12,8 @@
   "custody": {
     "unattended_distance_m": 3.0,
     "unattended_time_s": 25.0,
-    "max_occlusion_s": 30.0
+    "max_occlusion_s": 30.0,
+    "carry_confirm_s": 1.0
   },
   "registry": {
     "moved_threshold_m": 0.5,

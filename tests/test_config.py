@@ -255,3 +255,32 @@ def test_nome_antigo_de_missing_frames_falha_alto(tmp_path):
 
     with pytest.raises(ValueError, match="campo desconhecido"):
         load_config(caminho)
+
+
+def test_carry_confirm_curto_demais_e_recusado(tmp_path):
+    """Abaixo de 0.2s um único salto de projeção declara furto contra quem
+    estiver por perto — é o defeito que o projeto fechou na porta do
+    desaparecimento e reabriria na do movimento."""
+    caminho = tmp_path / "c.json"
+    caminho.write_text(json.dumps({"custody": {"carry_confirm_s": 0.04}}), encoding="utf-8")
+
+    with pytest.raises(UnsafeValueError, match="custody.carry_confirm_s"):
+        load_config(caminho)
+
+
+def test_carry_confirm_longo_demais_e_recusado(tmp_path):
+    caminho = tmp_path / "c.json"
+    caminho.write_text(json.dumps({"custody": {"carry_confirm_s": 60.0}}), encoding="utf-8")
+
+    with pytest.raises(UnsafeValueError, match="custody.carry_confirm_s"):
+        load_config(caminho)
+
+
+def test_erro_de_carry_confirm_nomeia_o_ataque(tmp_path):
+    caminho = tmp_path / "c.json"
+    caminho.write_text(json.dumps({"custody": {"carry_confirm_s": 60.0}}), encoding="utf-8")
+
+    with pytest.raises(UnsafeValueError) as erro:
+        load_config(caminho)
+
+    assert SAFE_BOUNDS["custody.carry_confirm_s"].reason in str(erro.value)

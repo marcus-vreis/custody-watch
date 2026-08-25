@@ -23,11 +23,12 @@ def cena(n: int = 30, fps: float = 25.0):
 
 
 def pedido(tmp_path, inicio=0.0, fim=1.0, pessoas=(1,), bag=1001) -> ClipRequest:
+    bags = frozenset() if bag is None else frozenset({bag})
     return ClipRequest(
         start_s=inicio,
         end_s=fim,
         person_ids=frozenset(pessoas),
-        bag_id=bag,
+        bag_ids=bags,
         output=tmp_path / "clipe.gif",
     )
 
@@ -86,7 +87,7 @@ def test_destaque_pinta_a_pessoa_de_forma_diferente_da_neutra(tmp_path):
     com_destaque = render_clip(cena(5), pedido(tmp_path, 0.0, 0.2, pessoas=(1,)))
     sem_destaque = render_clip(
         cena(5),
-        ClipRequest(0.0, 0.2, frozenset(), None, tmp_path / "neutro.gif"),
+        ClipRequest(0.0, 0.2, frozenset(), frozenset(), tmp_path / "neutro.gif"),
     )
 
     a = np.asarray(Image.open(com_destaque).convert("RGB"))
@@ -97,6 +98,6 @@ def test_destaque_pinta_a_pessoa_de_forma_diferente_da_neutra(tmp_path):
 
 def test_cria_o_diretorio_de_saida(tmp_path):
     destino = tmp_path / "fundo" / "mais" / "clipe.gif"
-    render_clip(cena(), ClipRequest(0.0, 0.4, frozenset({1}), 1001, destino))
+    render_clip(cena(), ClipRequest(0.0, 0.4, frozenset({1}), frozenset({1001}), destino))
 
     assert destino.exists()

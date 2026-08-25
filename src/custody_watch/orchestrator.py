@@ -61,10 +61,20 @@ class SessionResult:
     links: dict[int, int] = field(default_factory=dict)
     """Mapa de id bruto para canônico. O recorte de clipe precisa do inverso:
     o alerta cita o id canônico, e os frames trazem os brutos."""
+    bag_links: dict[int, int] = field(default_factory=dict)
+    """Mesma ideia de `links`, para bagagem: mapa de track bruto para
+    `bag_id` canônico. Depois de uma readoção sob oclusão, os frames do vídeo
+    trazem o track novo, mas os eventos e a fila citam o `bag_id` antigo -- o
+    recorte de clipe precisa do inverso para destacar a caixa certa."""
 
     def raw_ids(self, canonical_id: int) -> set[int]:
         brutos = {raw for raw, canon in self.links.items() if canon == canonical_id}
         brutos.add(canonical_id)
+        return brutos
+
+    def raw_bag_ids(self, canonical_bag_id: int) -> set[int]:
+        brutos = {raw for raw, canon in self.bag_links.items() if canon == canonical_bag_id}
+        brutos.add(canonical_bag_id)
         return brutos
 
 
@@ -73,6 +83,23 @@ def _nearest(people: Iterable[Observation], target) -> Observation | None:
     if not candidates:
         return None
     return min(candidates, key=lambda p: p.position.distance_to(target))
+
+
+class _Ambiguous:
+    """Sentinela devolvida por `adopt_occluded` quando a readoção recusa por
+    ambiguidade: mais de uma candidata no raio, nenhuma pode ser escolhida.
+
+    Distinta de `None` (nenhuma candidata, registrar como bagagem nova) de
+    propósito -- confundir os dois casos é a Finding 3: uma observação
+    recusada por ambígua registrada como bagagem nova cria uma bagagem
+    fantasma no exato lugar que acabou de ser declarado incerto.
+    """
+
+    def __repr__(self) -> str:
+        return "AMBIGUOUS"
+
+
+AMBIGUOUS = _Ambiguous()
 
 
 class _Session:
@@ -91,6 +118,19 @@ class _Session:
 
         self.history: dict[int, list[Observation]] = {}
         self.missing: dict[int, int] = {}
+        self.ambiguous_tracks: set[int] = set()
+        """Tracks de bagagem cuja identidade a readoção não conseguiu resolver.
+
+        A recusa vale para o track, não para o quadro nem para o lugar. Marcar
+        as vizinhas como AMBIGUA tira as duas do alcance de `occluded_near`,
+        então o mesmo track voltaria no quadro seguinte, não encontraria
+        candidata nenhuma, e se registraria como bagagem nova — uma bagagem
+        fantasma no exato ponto que acabou de ser declarado incerto, pronta
+        para receber posse por proximidade e virar acusação.
+
+        Um track novo no mesmo lugar mais tarde é outra pergunta, e passa
+        normalmente: a recusa não envenena a região.
+        """
 
         # Marcações para não repetir o mesmo flag a cada frame.
         self.near_since: dict[tuple[int, int], float] = {}
@@ -202,12 +242,19 @@ class _Session:
 
     # --- bagagem --------------------------------------------------------
 
-    def adopt_occluded(self, observation: Observation) -> Bag | None:
+    def adopt_occluded(self, observation: Observation) -> Bag | _Ambiguous | None:
         """Bagagem que sumiu e voltou com track novo readota a âncora ocluída.
 
         Caso estrito, e só ele: exatamente uma candidata no raio. Com mais de
         uma não há como saber qual é qual, e chutar corromperia o mapa de
         posse — então todas viram AMBIGUA, que é a regra P3.
+
+        Três desfechos, não dois: `None` quando não há candidata nenhuma, e o
+        chamador deve registrar a observação como bagagem nova; o sentinela
+        `AMBIGUOUS` quando há mais de uma, e o chamador deve descartar a
+        observação inteira -- registrá-la como nova cria uma bagagem fantasma
+        no lugar que acabou de ser declarado incerto; e a própria `Bag`
+        quando a readoção teve sucesso.
 
         Não é o P2 completo. `observe()` segue indexando por `track_id`, e
         quarenta malas pretas idênticas continuam em aberto.
@@ -222,7 +269,7 @@ class _Session:
             self.registry.mark_ambiguous_neighbours(
                 candidatas[0].bag_id, t=self.t, events=self.events
             )
-            return None
+            return AMBIGUOUS
 
         bag = candidatas[0]
         self.registry.link_track(observation.track_id, bag.bag_id)
@@ -265,40 +312,72 @@ class _Session:
     def carry_away(self, bag: Bag, observation: Observation, people: list[Observation]) -> bool:
         """A âncora saiu do lugar. Isso é perda de custódia, ou não é?
 
-        Devolve `True` quando a custódia foi resolvida — e nesse caso a âncora
-        **não** é movida: ela marca onde a custódia foi perdida, e é esse ponto
-        que o recorte de clipe mostra ao operador. Deixá-la seguir a bagagem
-        faria o clipe apontar para onde o ladrão estava ao sair de cena.
+        Devolve `True` quando a observação já foi tratada e a âncora **não**
+        deve ser movida — seja porque a custódia foi resolvida, seja porque
+        ainda se está esperando para decidir.
 
         Bagagem andando com quem legitimamente a possui não é evento nenhum: é
         o caso comum, o dono chegando com a própria mala ou saindo com ela. A
         regra P1 já diz que posse flui por vínculo forte, então um membro forte
         movendo a bagagem é custódia continuando, não terminando.
 
-        Tratar isso como retirada declarava a bagagem terminal meio segundo
-        depois de ela aparecer — antes mesmo de ser depositada — e matava todo
-        o resto da sessão.
+        Para todo o resto, o deslocamento precisa se sustentar por
+        `carry_confirm_s` antes de valer. Um quadro só não é bagagem sendo
+        levada — é ruído de projeção, e decidir nele é o mesmo defeito que o
+        caminho de desaparecimento já fechou.
         """
         if bag.state in TERMINAL_BAG_STATES or bag.state is BagState.AMBIGUA:
             # Custódia já decidida. Sem esta guarda, `flag_for_removal` roda a
-            # cada frame enquanto a bagagem se afasta, e o score do alerta passa
-            # a medir quantos quadros o furto durou em vez da gravidade dele.
+            # cada quadro enquanto a bagagem se afasta, e o score do alerta
+            # passa a medir quantos quadros o furto durou, não a gravidade.
             return True
 
         carrier = _nearest(people, observation.position)
-        if (
-            carrier is None
-            or carrier.position.distance_to(observation.position)
-            > self.config.pipeline.owner_search_radius_m
-        ):
-            # Bagagem que anda sozinha é fisicamente estranho. Chutar um dono
-            # corromperia o mapa de posse, então P3: suprime.
-            bag.state = BagState.AMBIGUA
+        perto = (
+            carrier is not None
+            and carrier.position.distance_to(observation.position)
+            <= self.config.pipeline.owner_search_radius_m
+        )
+
+        if perto:
+            party = None if bag.is_orphan else self.parties.get(bag.owner_party)
+            if party is not None and party.owns(carrier.track_id):
+                bag.moved_since = None
+                return False
+
+        if bag.moved_since is None:
+            bag.moved_since = self.t
+        if self.t - bag.moved_since < self.config.custody.carry_confirm_s:
             return True
 
-        party = None if bag.is_orphan else self.parties.get(bag.owner_party)
-        if party is not None and party.owns(carrier.track_id):
-            return False
+        deslocamento = bag.anchor.distance_to(observation.position)
+
+        if not perto:
+            # Bagagem que anda sozinha é mais provavelmente artefato de
+            # projeção que bagagem levitando. P3 manda suprimir o alerta — mas
+            # em silêncio ninguém consegue reconstruir por que a bagagem
+            # morreu, então o evento sai com os números que decidiram.
+            bag.state = BagState.AMBIGUA
+            self.events.emit(
+                Event(
+                    kind=EventKind.BAG_AMBIGUOUS,
+                    t_start=bag.moved_since,
+                    t_end=self.t,
+                    subject=None,
+                    bag=bag.bag_id,
+                    party=bag.owner_party,
+                    evidence={
+                        "moved_m": deslocamento,
+                        "nearest_person_m": (
+                            None
+                            if carrier is None
+                            else carrier.position.distance_to(observation.position)
+                        ),
+                        "anchor": [bag.anchor.x, bag.anchor.y],
+                    },
+                )
+            )
+            return True
 
         resolve_removal(bag, carrier.track_id, self.parties, t=self.t, events=self.events)
         flag = flag_for_removal(bag, carrier.track_id, self.t, self.config.flags)
@@ -310,9 +389,20 @@ class _Session:
         seen: set[int] = set()
 
         for observation in bags:
+            if observation.track_id in self.ambiguous_tracks:
+                continue
+
             known = self.registry.get_by_track(observation.track_id)
             if known is None:
-                known = self.adopt_occluded(observation)
+                adotada = self.adopt_occluded(observation)
+                if adotada is AMBIGUOUS:
+                    # A observação é descartada, e o track fica descartado
+                    # daqui em diante: registrá-lo como bagagem nova criaria
+                    # uma bagagem fantasma exatamente onde a ambiguidade
+                    # acabou de ser declarada.
+                    self.ambiguous_tracks.add(observation.track_id)
+                    continue
+                known = adotada
 
             # A bagagem andou. Resolver ANTES de observe(), que moveria a
             # âncora junto com quem a está levando. Quando `carry_away` devolve
@@ -330,6 +420,7 @@ class _Session:
             seen.add(bag.bag_id)
             self.missing.pop(bag.bag_id, None)
             self.end_occlusion(bag)
+            bag.moved_since = None
 
             if known is None:
                 carrier = _nearest(people, bag.anchor)
@@ -426,6 +517,13 @@ class _Session:
 
         Zero candidatos: sumiu sem ninguém ao alcance. Vários: não há como
         escolher. Nos dois casos P3 manda suprimir, não gerar.
+
+        Limpa `occluded_since`/`occlusion_candidates` nos dois ramos, do
+        mesmo jeito que `end_occlusion` faz quando a bagagem volta a ser
+        vista. Sem isso, se a bagagem reaparecer mais tarde -- com o mesmo
+        track ou religada por `adopt_occluded` -- `observe_bags` acha o campo
+        ainda preenchido e `end_occlusion` dispara de novo, emitindo um
+        segundo evento sobre um intervalo que este método já resolveu.
         """
         if len(bag.occlusion_candidates) != 1:
             bag.state = BagState.AMBIGUA
@@ -440,6 +538,8 @@ class _Session:
                     evidence={"candidates": sorted(bag.occlusion_candidates)},
                 )
             )
+            bag.occluded_since = None
+            bag.occlusion_candidates.clear()
             return
 
         carrier = next(iter(bag.occlusion_candidates))
@@ -447,6 +547,8 @@ class _Session:
         flag = flag_for_removal(bag, carrier, self.t, self.config.flags)
         if flag is not None:
             self.flags.add(flag)
+        bag.occluded_since = None
+        bag.occlusion_candidates.clear()
 
 
 def run_session(
@@ -484,6 +586,7 @@ def run_session(
         duration_s=session.t,
         flags=session.flags,
         links=session.linker.links(),
+        bag_links=session.registry.links(),
     )
 
 

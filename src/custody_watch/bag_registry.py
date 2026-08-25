@@ -45,6 +45,13 @@ class BagRegistry:
             raise KeyError(f"bagagem {bag_id} não registrada")
         self._by_track[track_id] = bag_id
 
+    def links(self) -> dict[int, int]:
+        """Mapa de track bruto para `bag_id` canônico, só onde houve
+        religação. Espelha `TrackLinker.links()`: enquanto não há religação o
+        track responde por si mesmo e não precisa aparecer aqui.
+        """
+        return dict(self._by_track)
+
     def occluded_near(self, position: Point, radius: float) -> list[Bag]:
         """Bagagens invisíveis cuja âncora está dentro do raio.
 
