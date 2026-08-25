@@ -28,6 +28,7 @@ class EventKind(StrEnum):
     BAG_UNATTENDED = "bag_unattended"
     BAG_REATTENDED = "bag_reattended"
     BAG_AMBIGUOUS = "bag_ambiguous"
+    BAG_OCCLUDED = "bag_occluded"
     BAG_REMOVED_BY_OWNER = "bag_removed_by_owner"
     BAG_REMOVED_BY_STRANGER = "bag_removed_by_stranger"
     PARTY_FORMED = "party_formed"
