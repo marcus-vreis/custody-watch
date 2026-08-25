@@ -145,8 +145,8 @@ def test_len_do_log():
 
 
 def test_bag_occluded_e_intervalo_serializavel():
-    """A oclusao e um intervalo, nao um instante: o que interessa e quanto
-    tempo a bagagem ficou invisivel e quem esteve nela nesse periodo."""
+    """A oclusão é um intervalo, não um instante: o que interessa é quanto
+    tempo a bagagem ficou invisível e quem esteve nela nesse período."""
     evento = Event(
         kind=EventKind.BAG_OCCLUDED,
         t_start=10.0,
@@ -154,7 +154,7 @@ def test_bag_occluded_e_intervalo_serializavel():
         subject=None,
         bag=7,
         party=1,
-        evidence={"duration_s": 2.5, "candidates": [3]},
+        evidence={"candidates": [3]},
     )
 
     assert evento.duration_s == 2.5

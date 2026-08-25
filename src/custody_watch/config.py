@@ -193,10 +193,12 @@ SAFE_BOUNDS: dict[str, Bounds] = {
     "pipeline.missing_frames_before_occluded": Bounds(
         2,
         50,
-        "abaixo de 2, um único quadro perdido pelo detector vira oclusão e "
-        "polui o log; acima de 50 a bagagem segue 'visível' na lógica por dois "
-        "segundos depois de sumir da tela, e a janela de candidatos perde "
-        "justamente quem estava em cima dela",
+        "abaixo de 2, todo tropeço do detector abre um intervalo de oclusão, e "
+        "a lista de candidatos acumula quem apenas passou por perto até a "
+        "atribuição não apontar mais ninguém em particular; acima de 50 a "
+        "bagagem segue 'visível' na lógica por segundos depois de sumir da "
+        "tela, e a janela de candidatos perde justamente quem estava em cima "
+        "dela",
     ),
     "reid.min_similarity": Bounds(
         0.70,

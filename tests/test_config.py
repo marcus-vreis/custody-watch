@@ -8,7 +8,6 @@ from custody_watch.config import (
     SAFE_BOUNDS,
     Config,
     UnsafeValueError,
-    _resolve,
     load_config,
 )
 
@@ -196,40 +195,59 @@ def test_config_e_imutavel():
         config.party.proximity_m = 99.0
 
 
-def test_max_occlusion_curto_demais_e_recusado():
-    """Abaixo de 5s, alguem parado em frente a bagagem apaga a custodia e o
-    falso alarme de retirada volta -- que e o defeito que este limiar existe
+def test_max_occlusion_curto_demais_e_recusado(tmp_path):
+    """Abaixo de 5s, alguém parado em frente à bagagem apaga a custódia e o
+    falso alarme de retirada volta — que é o defeito que este limiar existe
     para fechar."""
+    caminho = tmp_path / "c.json"
+    caminho.write_text(json.dumps({"custody": {"max_occlusion_s": 2.0}}), encoding="utf-8")
+
     with pytest.raises(UnsafeValueError, match="custody.max_occlusion_s"):
-        _resolve("custody.max_occlusion_s", 2.0)
+        load_config(caminho)
 
 
-def test_max_occlusion_longo_demais_e_recusado():
+def test_max_occlusion_longo_demais_e_recusado(tmp_path):
+    caminho = tmp_path / "c.json"
+    caminho.write_text(json.dumps({"custody": {"max_occlusion_s": 600.0}}), encoding="utf-8")
+
     with pytest.raises(UnsafeValueError, match="custody.max_occlusion_s"):
-        _resolve("custody.max_occlusion_s", 600.0)
+        load_config(caminho)
 
 
-def test_erro_de_max_occlusion_nomeia_o_ataque():
-    """Mensagem de erro de config e documentacao: precisa dizer o que o limite
-    previne, nao so que o numero e invalido."""
-    with pytest.raises(UnsafeValueError, match="ladrão já saiu"):
-        _resolve("custody.max_occlusion_s", 600.0)
+def test_erro_de_max_occlusion_nomeia_o_ataque(tmp_path):
+    """Mensagem de erro de config é documentação: precisa dizer o que o limite
+    previne, não só que o número é inválido."""
+    caminho = tmp_path / "c.json"
+    caminho.write_text(json.dumps({"custody": {"max_occlusion_s": 600.0}}), encoding="utf-8")
+
+    with pytest.raises(UnsafeValueError) as erro:
+        load_config(caminho)
+
+    assert SAFE_BOUNDS["custody.max_occlusion_s"].reason in str(erro.value)
 
 
-def test_missing_frames_tem_faixa_segura():
+def test_missing_frames_tem_faixa_segura(tmp_path):
     """A 5 quadros esse limiar disparava um N3 falso contra quem passava na
     frente da bagagem. Limiar relevante a ataque precisa de faixa declarada."""
-    with pytest.raises(UnsafeValueError, match="missing_frames_before_occluded"):
-        _resolve("pipeline.missing_frames_before_occluded", 1)
+    caminho = tmp_path / "c.json"
 
+    caminho.write_text(
+        json.dumps({"pipeline": {"missing_frames_before_occluded": 1}}), encoding="utf-8"
+    )
     with pytest.raises(UnsafeValueError, match="missing_frames_before_occluded"):
-        _resolve("pipeline.missing_frames_before_occluded", 200)
+        load_config(caminho)
+
+    caminho.write_text(
+        json.dumps({"pipeline": {"missing_frames_before_occluded": 200}}), encoding="utf-8"
+    )
+    with pytest.raises(UnsafeValueError, match="missing_frames_before_occluded"):
+        load_config(caminho)
 
 
 def test_nome_antigo_de_missing_frames_falha_alto(tmp_path):
-    """Renomear campo e melhor que manter nome que descreve comportamento
-    removido. load_config ja recusa campo desconhecido, entao a renomeacao
-    nao passa em silencio."""
+    """Renomear campo é melhor que manter nome que descreve comportamento
+    removido. load_config já recusa campo desconhecido, então a renomeação
+    não passa em silêncio."""
     caminho = tmp_path / "c.json"
     caminho.write_text(
         json.dumps({"pipeline": {"missing_frames_before_removal": 5}}), encoding="utf-8"
