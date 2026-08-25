@@ -142,3 +142,20 @@ def test_len_do_log():
     log.emit(make_event())
 
     assert len(log) == 2
+
+
+def test_bag_occluded_e_intervalo_serializavel():
+    """A oclusão é um intervalo, não um instante: o que interessa é quanto
+    tempo a bagagem ficou invisível e quem esteve nela nesse período."""
+    evento = Event(
+        kind=EventKind.BAG_OCCLUDED,
+        t_start=10.0,
+        t_end=12.5,
+        subject=None,
+        bag=7,
+        party=1,
+        evidence={"candidates": [3]},
+    )
+
+    assert evento.duration_s == 2.5
+    assert Event.from_dict(evento.to_dict()) == evento

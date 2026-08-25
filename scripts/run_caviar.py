@@ -63,7 +63,14 @@ def main() -> int:
             falsos[reid] += estranho
 
             if reid:
-                religou = len(resultado.events.of_kind(EventKind.TRACK_RELINKED))
+                # TRACK_RELINKED agora também cobre readoção de bagagem sob
+                # oclusão (`adopt_occluded`). Aqui a métrica é re-ID de
+                # pessoa, então filtra para religações sem bagagem -- senão
+                # o número reportado passa a incluir um evento diferente do
+                # que o rótulo da coluna promete.
+                religou = len(
+                    [e for e in resultado.events.of_kind(EventKind.TRACK_RELINKED) if e.bag is None]
+                )
                 linha += f"{dono:>10}{estranho:>9}{religou:>9}"
             else:
                 minutos += resultado.duration_s / 60.0

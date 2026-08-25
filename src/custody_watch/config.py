@@ -47,6 +47,8 @@ class PartyConfig:
 class CustodyConfig:
     unattended_distance_m: float = 3.0
     unattended_time_s: float = 25.0
+    max_occlusion_s: float = 30.0
+    carry_confirm_s: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,7 @@ class PipelineConfig:
     """Números do orquestrador. Antes eram constantes soltas no módulo."""
 
     owner_search_radius_m: float = 3.0
-    missing_frames_before_removal: int = 5
+    missing_frames_before_occluded: int = 5
     merge_every_frames: int = 25
     history_window_s: float = 10.0
     contact_radius_m: float = 0.8
@@ -152,6 +154,21 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         "abaixo de 5s, ir ao balcão vira bagagem desacompanhada; acima de 300s "
         "o furto termina antes do alerta",
     ),
+    "custody.max_occlusion_s": Bounds(
+        5.0,
+        120.0,
+        "abaixo de 5s, alguém parado em frente à bagagem apaga a custódia e o "
+        "falso alarme de retirada volta; acima de 120s o ladrão já saiu do "
+        "prédio antes de o evento existir",
+    ),
+    "custody.carry_confirm_s": Bounds(
+        0.2,
+        10.0,
+        "abaixo de 0.2s um único salto de projeção declara furto contra quem "
+        "estiver por perto — é o defeito que este projeto fechou na porta do "
+        "desaparecimento e reabriria na do movimento; acima de 10s o ladrão "
+        "sai de quadro antes de o evento existir",
+    ),
     "registry.moved_threshold_m": Bounds(
         0.2,
         2.0,
@@ -181,6 +198,16 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         5.0,
         "acima de 5m o back-tracing atribui a bagagem a quem so passava pela "
         "regiao, e o dono errado torna toda a cadeia de custodia invalida",
+    ),
+    "pipeline.missing_frames_before_occluded": Bounds(
+        2,
+        50,
+        "abaixo de 2, todo tropeço do detector abre um intervalo de oclusão, e "
+        "a lista de candidatos acumula quem apenas passou por perto até a "
+        "atribuição não apontar mais ninguém em particular; acima de 50 a "
+        "bagagem segue 'visível' na lógica por segundos depois de sumir da "
+        "tela, e a janela de candidatos perde justamente quem estava em cima "
+        "dela",
     ),
     "reid.min_similarity": Bounds(
         0.70,

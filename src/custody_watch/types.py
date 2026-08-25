@@ -96,6 +96,33 @@ class Bag:
     owner_party: int | None = None  # None => órfã
     last_seen: float = 0.0
     unattended_since: float | None = None
+    occluded_since: float | None = None
+    """Instante em que o detector deixou de ver a bagagem. `None` => visível.
+
+    É campo próprio, e não um valor de `BagState`, porque visibilidade e
+    acompanhamento são eixos independentes. `update_attendance` escreve
+    `state` a cada frame, então um `BagState.OCLUIDA` seria sobrescrito no
+    frame seguinte — e uma bagagem pode estar desacompanhada e ocluída ao
+    mesmo tempo.
+    """
+    occlusion_candidates: set[int] = field(default_factory=set)
+    """Quem esteve ao alcance da âncora durante a ausência.
+
+    É diferente de quem está mais perto no instante em que a oclusão estoura:
+    a essa altura quem levou a bagagem já saiu de perto, e quem sobrou é um
+    inocente qualquer.
+    """
+    moved_since: float | None = None
+    """Instante em que a bagagem passou a ser vista longe da âncora.
+
+    Deslocamento de um quadro só não é bagagem sendo levada — é ruído de
+    projeção. Meio metro são cerca de nove pixels na escala do CAVIAR, e a
+    projeção ignora perspectiva, então o erro cresce com a profundidade.
+
+    O caminho de desaparecimento já espera antes de decidir. Este espera pelo
+    mesmo motivo: no instante do movimento a informação que separa artefato de
+    furto ainda não existe.
+    """
 
     @property
     def is_orphan(self) -> bool:

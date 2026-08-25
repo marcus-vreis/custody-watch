@@ -1,3 +1,5 @@
+import pytest
+
 from custody_watch.bag_registry import BagRegistry
 from custody_watch.config import RegistryConfig
 from custody_watch.types import BagState, Observation, Point
@@ -103,3 +105,95 @@ def test_config_altera_o_limiar_de_movimento():
 
     assert registry.has_moved(obs(1, 6.0, 5.0, t=1.0)) is False
     assert registry.has_moved(obs(1, 8.0, 5.0, t=1.0)) is True
+
+
+def test_track_novo_passa_a_responder_pela_mesma_bagagem():
+    """A bagagem sumiu atrás de alguém e voltou com id novo. O bag_id NÃO pode
+    mudar: é ele que está nos eventos já emitidos e nos flags acumulados, e
+    trocá-lo quebraria a cadeia de auditoria."""
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+
+    registry.link_track(77, 1)
+
+    assert registry.get_by_track(77) is registry.get(1)
+
+
+def test_observe_de_track_religado_nao_cria_bagagem_nova():
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.link_track(77, 1)
+
+    bag = registry.observe(obs(77, 5.1, 5.0, t=1.0))
+
+    assert bag.bag_id == 1
+    assert len(registry.all()) == 1
+
+
+def test_link_de_bagagem_inexistente_falha_alto():
+    with pytest.raises(KeyError):
+        BagRegistry().link_track(77, 404)
+
+
+def test_get_by_track_sem_religacao_usa_o_proprio_id():
+    """Comportamento antigo preservado: enquanto não há religação, bag_id e
+    track_id são o mesmo número e nada precisa migrar."""
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+
+    assert registry.get_by_track(1) is registry.get(1)
+    assert registry.get_by_track(404) is None
+
+
+def test_ocluidas_no_raio_ignora_as_visiveis():
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.observe(obs(2, 5.2, 5.0, t=0.0))
+    registry.get(1).occluded_since = 3.0
+
+    perto = registry.occluded_near(Point(5.05, 5.0), radius=0.5)
+
+    assert [bag.bag_id for bag in perto] == [1]
+
+
+def test_ocluidas_no_raio_respeita_a_distancia():
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.get(1).occluded_since = 3.0
+
+    assert registry.occluded_near(Point(9.0, 9.0), radius=0.5) == []
+
+
+def test_ocluidas_no_raio_ignora_bagagem_ja_resolvida():
+    """Uma âncora cuja custódia já foi decidida (RETIRADA_ESTRANHO) não pode
+    seguir como alvo de readoção: senão uma bagagem genuinamente nova largada
+    no mesmo lugar é engolida pela antiga, terminal, e nunca aparece de novo
+    -- sem `BAG_APPEARED`, sem posse. Esse teste cai se qualquer um dos dois
+    checks de estado (`TERMINAL_BAG_STATES` ou `AMBIGUA`) for removido: a
+    bagagem terminal e a ambígua estão a distâncias diferentes da posição
+    consultada, e as duas precisam ficar de fora.
+    """
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.get(1).occluded_since = 3.0
+    registry.get(1).state = BagState.RETIRADA_ESTRANHO
+
+    registry.observe(obs(2, 5.3, 5.0, t=0.0))
+    registry.get(2).occluded_since = 3.0
+    registry.get(2).state = BagState.AMBIGUA
+
+    registry.observe(obs(3, 5.1, 5.0, t=0.0))
+    registry.get(3).occluded_since = 3.0
+
+    perto = registry.occluded_near(Point(5.05, 5.0), radius=1.0)
+
+    assert [bag.bag_id for bag in perto] == [3]
+
+
+def test_has_moved_segue_o_track_religado():
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.link_track(77, 1)
+
+    assert registry.has_moved(obs(77, 5.1, 5.0, t=1.0)) is False
+    assert registry.has_moved(obs(77, 9.0, 5.0, t=1.0)) is True

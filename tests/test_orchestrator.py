@@ -1,6 +1,6 @@
 import numpy as np
 
-from custody_watch.config import Config, PipelineConfig
+from custody_watch.config import Config, CustodyConfig, PipelineConfig
 from custody_watch.events import EventKind
 from custody_watch.ground_plane import GroundPlane
 from custody_watch.orchestrator import run_session
@@ -10,8 +10,13 @@ from custody_watch.types import FlagLevel
 PLANO = GroundPlane(np.eye(3))
 
 # Nos testes o merge roda a cada frame: esperar 25 quadros só alongaria os
-# cenários sem exercitar nada.
-RAPIDO = Config(pipeline=PipelineConfig(merge_every_frames=1))
+# cenários sem exercitar nada. E `cena` faz um quadro valer um segundo, então
+# o timeout de oclusão desce para o mínimo da faixa segura — senão todo
+# cenário de retirada precisaria de mais de trinta quadros.
+RAPIDO = Config(
+    pipeline=PipelineConfig(merge_every_frames=1),
+    custody=CustodyConfig(max_occlusion_s=5.0),
+)
 
 
 def pessoa(track_id: int, x: float) -> TrackedDetection:
@@ -82,7 +87,10 @@ def test_companheiro_recolhe_a_mala_e_retirada_legitima():
     # A pessoa 1 sai antes de a mala sumir, para que o carregador seja
     # inequivocamente a 2 e o teste dependa mesmo da fusão de grupos.
     quadros += [[pessoa(2, 10.3), mala(9, 10.2)]] * 3
-    quadros += [[pessoa(2, 10.3)]] * 8
+    # A retirada agora resolve no timeout de oclusão, não no desaparecimento:
+    # os quadros restantes precisam ultrapassar missing_frames_before_occluded
+    # + max_occlusion_s de RAPIDO, senão a bagagem nunca sai do estado adiado.
+    quadros += [[pessoa(2, 10.3)]] * 16
 
     resultado = run_session(cena(*quadros), PLANO, RAPIDO)
 
@@ -95,7 +103,8 @@ def test_estranho_recolhe_a_mala_do_casal_e_alerta():
     """O espelho: fundir grupos não pode cegar o sistema para furto."""
     quadros = casal_andando()
     quadros += [[pessoa(1, 10.0), pessoa(2, 10.5), mala(9, 10.2)]] * 3
-    quadros += [[pessoa(7, 10.2)]] * 8
+    # Mesma razão do teste anterior: precisa sobreviver ao timeout de oclusão.
+    quadros += [[pessoa(7, 10.2)]] * 16
 
     resultado = run_session(cena(*quadros), PLANO, RAPIDO)
 

@@ -41,3 +41,29 @@ def test_flag_exige_explicacao():
         explanation="Tocou em bagagem do grupo 2 aos 2min00s.",
     )
     assert flag.explanation
+
+
+def test_bagagem_nasce_visivel():
+    """occluded_since é None enquanto o detector a enxerga. None não é zero:
+    zero seria um instante válido de início de oclusão."""
+    bag = Bag(bag_id=1, anchor=Point(0.0, 0.0))
+
+    assert bag.occluded_since is None
+    assert bag.occlusion_candidates == set()
+
+
+def test_candidatos_de_oclusao_nao_sao_compartilhados():
+    """Erro clássico de default mutável: duas bagagens dividindo o mesmo set."""
+    a = Bag(bag_id=1, anchor=Point(0.0, 0.0))
+    b = Bag(bag_id=2, anchor=Point(5.0, 5.0))
+
+    a.occlusion_candidates.add(99)
+
+    assert b.occlusion_candidates == set()
+
+
+def test_oclusao_nao_e_estado_de_bagagem():
+    """Visibilidade e acompanhamento são eixos independentes: update_attendance
+    escreve bag.state todo frame, então um BagState.OCLUIDA seria sobrescrito
+    no frame seguinte. Uma bagagem pode estar desacompanhada E ocluída."""
+    assert not any(estado.name == "OCLUIDA" for estado in BagState)
