@@ -199,15 +199,78 @@ class _Session:
 
     # --- bagagem --------------------------------------------------------
 
+    def adopt_occluded(self, observation: Observation) -> Bag | None:
+        """Bagagem que sumiu e voltou com track novo readota a âncora ocluída.
+
+        Caso estrito, e só ele: exatamente uma candidata no raio. Com mais de
+        uma não há como saber qual é qual, e chutar corromperia o mapa de
+        posse — então todas viram AMBIGUA, que é a regra P3.
+
+        Não é o P2 completo. `observe()` segue indexando por `track_id`, e
+        quarenta malas pretas idênticas continuam em aberto.
+        """
+        candidatas = self.registry.occluded_near(
+            observation.position, self.config.registry.moved_threshold_m
+        )
+        if not candidatas:
+            return None
+
+        if len(candidatas) > 1:
+            self.registry.mark_ambiguous_neighbours(
+                candidatas[0].bag_id, t=self.t, events=self.events
+            )
+            return None
+
+        bag = candidatas[0]
+        self.registry.link_track(observation.track_id, bag.bag_id)
+        self.events.emit(
+            Event(
+                kind=EventKind.TRACK_RELINKED,
+                t_start=self.t,
+                t_end=self.t,
+                subject=None,
+                bag=bag.bag_id,
+                party=bag.owner_party,
+                evidence={
+                    "from_track": observation.track_id,
+                    "occluded_s": self.t - bag.occluded_since,
+                    "distance_m": bag.anchor.distance_to(observation.position),
+                },
+            )
+        )
+        return bag
+
+    def end_occlusion(self, bag: Bag) -> None:
+        """A bagagem voltou. Registra o intervalo e limpa o estado."""
+        if bag.occluded_since is None:
+            return
+
+        self.events.emit(
+            Event(
+                kind=EventKind.BAG_OCCLUDED,
+                t_start=bag.occluded_since,
+                t_end=self.t,
+                subject=None,
+                bag=bag.bag_id,
+                party=bag.owner_party,
+                evidence={"candidates": sorted(bag.occlusion_candidates)},
+            )
+        )
+        bag.occluded_since = None
+        bag.occlusion_candidates.clear()
+
     def observe_bags(self, bags: list[Observation], people: list[Observation]) -> set[int]:
         seen: set[int] = set()
 
         for observation in bags:
-            seen.add(observation.track_id)
-            self.missing.pop(observation.track_id, None)
+            known = self.registry.get_by_track(observation.track_id)
+            if known is None:
+                known = self.adopt_occluded(observation)
 
-            known = self.registry.get(observation.track_id)
             bag = self.registry.observe(observation, events=self.events)
+            seen.add(bag.bag_id)
+            self.missing.pop(bag.bag_id, None)
+            self.end_occlusion(bag)
 
             if known is None:
                 carrier = _nearest(people, bag.anchor)
@@ -265,32 +328,68 @@ class _Session:
 
     def resolve_removals(self, seen: set[int], people: list[Observation]) -> None:
         for bag in self.registry.all():
-            if bag.state in TERMINAL_BAG_STATES:
+            if bag.state in TERMINAL_BAG_STATES or bag.state is BagState.AMBIGUA:
                 continue
+
+            # A attendance roda também para bagagem invisível, contra a âncora
+            # congelada: a posição dela é conhecida e as pessoas também. Sem
+            # isso, ocluir em ciclos congela o cronômetro e o limiar de 25s
+            # nunca completa.
+            update_attendance(
+                bag, people, self.parties, self.t, self.config.custody, events=self.events
+            )
+
             if bag.bag_id in seen:
-                update_attendance(
-                    bag, people, self.parties, self.t, self.config.custody, events=self.events
-                )
                 continue
 
             self.missing[bag.bag_id] = self.missing.get(bag.bag_id, 0) + 1
             if self.missing[bag.bag_id] < self.config.pipeline.missing_frames_before_occluded:
                 continue
 
-            # Quem está em cena agora tem preferência: alguém que apareceu no
-            # último frame da bagagem e já saiu não a levou. O último frame só
-            # entra quando não há mais ninguém — é o caso do CAVIAR, cuja
-            # anotação para no instante exato da retirada.
-            candidatos = people or self.last_people.get(bag.bag_id, [])
+            if bag.occluded_since is None:
+                bag.occluded_since = self.t
 
-            carrier = _nearest(candidatos, bag.anchor)
-            if carrier is None:
+            # Quem esteve ao alcance da âncora DURANTE a ausência. Decidir no
+            # instante do sumiço é o defeito: ali a informação que separa
+            # passante de ladrão ainda não existe.
+            bag.occlusion_candidates.update(
+                pessoa.track_id
+                for pessoa in people
+                if pessoa.position.distance_to(bag.anchor)
+                <= self.config.pipeline.owner_search_radius_m
+            )
+
+            if self.t - bag.occluded_since < self.config.custody.max_occlusion_s:
                 continue
 
-            resolve_removal(bag, carrier.track_id, self.parties, t=self.t, events=self.events)
-            flag = flag_for_removal(bag, carrier.track_id, self.t, self.config.flags)
-            if flag is not None:
-                self.flags.add(flag)
+            self.resolve_occlusion_timeout(bag)
+
+    def resolve_occlusion_timeout(self, bag: Bag) -> None:
+        """A bagagem não voltou. Agora sim resolve, com quem esteve nela.
+
+        Zero candidatos: sumiu sem ninguém ao alcance. Vários: não há como
+        escolher. Nos dois casos P3 manda suprimir, não gerar.
+        """
+        if len(bag.occlusion_candidates) != 1:
+            bag.state = BagState.AMBIGUA
+            self.events.emit(
+                Event(
+                    kind=EventKind.BAG_AMBIGUOUS,
+                    t_start=bag.occluded_since,
+                    t_end=self.t,
+                    subject=None,
+                    bag=bag.bag_id,
+                    party=bag.owner_party,
+                    evidence={"candidates": sorted(bag.occlusion_candidates)},
+                )
+            )
+            return
+
+        carrier = next(iter(bag.occlusion_candidates))
+        resolve_removal(bag, carrier, self.parties, t=self.t, events=self.events)
+        flag = flag_for_removal(bag, carrier, self.t, self.config.flags)
+        if flag is not None:
+            self.flags.add(flag)
 
 
 def run_session(
