@@ -16,6 +16,7 @@ from custody_watch.events import EventKind
 from custody_watch.ground_plane import GroundPlane
 from custody_watch.orchestrator import run_session
 from custody_watch.tracking import TrackedDetection
+from custody_watch.types import FlagLevel
 
 FPS = 25.0
 BAG, DONO, ESTRANHO = 900, 1, 2
@@ -324,3 +325,106 @@ def test_readocao_com_mais_de_uma_candidata_marca_ambigua_e_nao_adota():
     ]
     assert religacoes_de_bagagem == []
     assert len(tipos(resultado, EventKind.BAG_AMBIGUOUS)) == 1
+
+
+LADRAO = 3
+
+
+def cena_com_furto(duracao_s: float = 70.0):
+    """Depois da passagem inocente aos 32s, um segundo estranho chega aos 45s
+    e leva a bagagem embora aos 50s, EM PLENA VISTA. O detector nunca perde a
+    bagagem durante o furto."""
+    for i in range(int(duracao_s * FPS)):
+        t = i / FPS
+        det = [TrackedDetection(DONO, "person", caixa(dono_x(t), 11.0, 170))]
+
+        if t < 4.0:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(6.0 + t, 11.0, 55)))
+            yield t, det
+            continue
+
+        ocluida = False
+        if 30.0 <= t <= 36.0:
+            det.append(TrackedDetection(ESTRANHO, "person", caixa(6.0 + (t - 30) * 2, 9.5, 170)))
+            ocluida = 31.5 <= t < 32.5
+
+        mala_x, mala_y = 10.0, 10.0
+        if t >= 45.0:
+            lx = min(6.0 + (t - 45.0), 10.0) if t < 50.0 else 10.0 + (t - 50.0) * 1.5
+            det.append(TrackedDetection(LADRAO, "person", caixa(lx, 10.2, 170)))
+            if t >= 50.0:
+                mala_x, mala_y = lx, 10.2
+
+        if not ocluida:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(mala_x, mala_y, 55)))
+
+        yield t, det
+
+
+def test_furto_em_plena_vista_e_visto():
+    """`has_moved` existia, era testado, e nunca era chamado por `src/`. A
+    remoção só era detectada por DESAPARECIMENTO, então uma bagagem carregada
+    embora continuava sendo detectada todo frame, nunca entrava no caminho, e
+    `observe()` movia a âncora junto com o ladrão."""
+    resultado = run_session(cena_com_furto(), PLANO, Config())
+
+    (furto,) = tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER)
+    assert furto.subject == LADRAO
+    assert furto.t_start == pytest.approx(50.0, abs=1.0)
+
+
+def test_a_fila_ranqueia_o_ladrao_acima_do_inocente():
+    """O defeito que importa. A saída do sistema é uma ordem de prioridade
+    para um operador humano, e ela estava invertida: medido, a fila continha
+    só o passante inocente, em N3, e o ladrão não aparecia nela.
+
+    O passante continua na fila, e deve continuar: ele passou a menos de 80cm
+    da bagagem, e isso é um fato relacional verdadeiro — a regra P4 diz que é
+    disso que um flag trata. O que não pode existir é acusação de custódia
+    contra ele. Exigir que ele suma da fila seria pedir ao sistema que
+    esquecesse uma observação real.
+    """
+    resultado = run_session(cena_com_furto(), PLANO, Config())
+
+    fila = {item.person: item for item in resultado.queue}
+
+    assert resultado.queue[0].person == LADRAO
+    assert fila[LADRAO].top_level is FlagLevel.N3
+    assert fila[ESTRANHO].top_level is FlagLevel.N2
+
+
+def test_ancora_nao_caminha_com_quem_leva():
+    """A âncora marca ONDE a custódia foi perdida, e é esse ponto que o
+    recorte de clipe mostra ao operador. Se ela seguir a bagagem, o clipe
+    aponta para onde o ladrão estava ao sair de cena, não para o furto.
+
+    A bagagem foi largada em (10, 10) e o ladrão sai andando dali.
+    """
+    resultado = run_session(cena_com_furto(), PLANO, Config())
+
+    (furto,) = tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER)
+    assert furto.evidence["anchor"] == pytest.approx([10.0, 10.0], abs=0.01)
+
+
+def test_custodia_nao_e_dada_por_restaurada_com_a_bagagem_indo_embora():
+    """Medido antes deste conserto: o ladrão carregava a bagagem NA DIREÇÃO do
+    dono, a âncora ia junto, a distância caía abaixo dos 3m e o sistema emitia
+    BAG_REATTENDED — dava a custódia por restaurada durante o furto."""
+    resultado = run_session(cena_com_furto(), PLANO, Config())
+
+    assert tipos(resultado, EventKind.BAG_REATTENDED) == []
+
+
+def test_carry_away_nao_inunda_flags_por_quadro():
+    """Medido antes deste conserto: sem a guarda de estado terminal no topo de
+    `carry_away`, `flag_for_removal` rodava a cada quadro enquanto o ladrão se
+    afastava com a bagagem em vista -- 738 flags de retirada para um furto de
+    ~30s de duração, inflando o score do alerta para 7253 (proporcional à
+    duração do furto, não à gravidade dele). Com a guarda, exatamente um flag
+    de retirada por furto."""
+    resultado = run_session(cena_com_furto(), PLANO, Config())
+
+    flags_de_retirada = [
+        f for f in resultado.flags.for_person(LADRAO) if f.kind == "retirada_por_estranho"
+    ]
+    assert len(flags_de_retirada) == 1

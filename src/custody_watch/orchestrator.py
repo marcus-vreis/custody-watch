@@ -262,6 +262,50 @@ class _Session:
         bag.occluded_since = None
         bag.occlusion_candidates.clear()
 
+    def carry_away(self, bag: Bag, observation: Observation, people: list[Observation]) -> bool:
+        """A âncora saiu do lugar. Isso é perda de custódia, ou não é?
+
+        Devolve `True` quando a custódia foi resolvida — e nesse caso a âncora
+        **não** é movida: ela marca onde a custódia foi perdida, e é esse ponto
+        que o recorte de clipe mostra ao operador. Deixá-la seguir a bagagem
+        faria o clipe apontar para onde o ladrão estava ao sair de cena.
+
+        Bagagem andando com quem legitimamente a possui não é evento nenhum: é
+        o caso comum, o dono chegando com a própria mala ou saindo com ela. A
+        regra P1 já diz que posse flui por vínculo forte, então um membro forte
+        movendo a bagagem é custódia continuando, não terminando.
+
+        Tratar isso como retirada declarava a bagagem terminal meio segundo
+        depois de ela aparecer — antes mesmo de ser depositada — e matava todo
+        o resto da sessão.
+        """
+        if bag.state in TERMINAL_BAG_STATES or bag.state is BagState.AMBIGUA:
+            # Custódia já decidida. Sem esta guarda, `flag_for_removal` roda a
+            # cada frame enquanto a bagagem se afasta, e o score do alerta passa
+            # a medir quantos quadros o furto durou em vez da gravidade dele.
+            return True
+
+        carrier = _nearest(people, observation.position)
+        if (
+            carrier is None
+            or carrier.position.distance_to(observation.position)
+            > self.config.pipeline.owner_search_radius_m
+        ):
+            # Bagagem que anda sozinha é fisicamente estranho. Chutar um dono
+            # corromperia o mapa de posse, então P3: suprime.
+            bag.state = BagState.AMBIGUA
+            return True
+
+        party = None if bag.is_orphan else self.parties.get(bag.owner_party)
+        if party is not None and party.owns(carrier.track_id):
+            return False
+
+        resolve_removal(bag, carrier.track_id, self.parties, t=self.t, events=self.events)
+        flag = flag_for_removal(bag, carrier.track_id, self.t, self.config.flags)
+        if flag is not None:
+            self.flags.add(flag)
+        return True
+
     def observe_bags(self, bags: list[Observation], people: list[Observation]) -> set[int]:
         seen: set[int] = set()
 
@@ -269,6 +313,18 @@ class _Session:
             known = self.registry.get_by_track(observation.track_id)
             if known is None:
                 known = self.adopt_occluded(observation)
+
+            # A bagagem andou. Resolver ANTES de observe(), que moveria a
+            # âncora junto com quem a está levando. Quando `carry_away` devolve
+            # False não houve perda de custódia -- é o dono movendo a própria
+            # bagagem -- e a âncora acompanha normalmente.
+            if (
+                known is not None
+                and self.registry.has_moved(observation)
+                and self.carry_away(known, observation, people)
+            ):
+                seen.add(known.bag_id)
+                continue
 
             bag = self.registry.observe(observation, events=self.events)
             seen.add(bag.bag_id)

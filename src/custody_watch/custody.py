@@ -133,7 +133,11 @@ def resolve_removal(
                     subject=carrier_track,
                     bag=bag.bag_id,
                     party=bag.owner_party,
-                    evidence={"carrier": carrier_track, "bond": "strong"},
+                    evidence={
+                        "carrier": carrier_track,
+                        "bond": "strong",
+                        "anchor": [bag.anchor.x, bag.anchor.y],
+                    },
                 )
             )
         else:
@@ -145,7 +149,11 @@ def resolve_removal(
                     subject=carrier_track,
                     bag=bag.bag_id,
                     party=bag.owner_party,
-                    evidence={"carrier": carrier_track, "owner_party": bag.owner_party},
+                    evidence={
+                        "carrier": carrier_track,
+                        "owner_party": bag.owner_party,
+                        "anchor": [bag.anchor.x, bag.anchor.y],
+                    },
                 )
             )
 

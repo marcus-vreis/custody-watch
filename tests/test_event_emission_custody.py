@@ -191,7 +191,7 @@ def test_resolve_removal_emite_bag_removed_by_owner():
     assert event.t_start == 15.0
     assert event.subject == 2
     assert event.bag == bag.bag_id
-    assert event.evidence == {"carrier": 2, "bond": "strong"}
+    assert event.evidence == {"carrier": 2, "bond": "strong", "anchor": [0.0, 0.0]}
 
 
 def test_resolve_removal_emite_bag_removed_by_stranger_com_carregador_e_grupo():
@@ -208,7 +208,11 @@ def test_resolve_removal_emite_bag_removed_by_stranger_com_carregador_e_grupo():
     assert event.t_start == 20.0
     assert event.subject == 99
     assert event.bag == bag.bag_id
-    assert event.evidence == {"carrier": 99, "owner_party": party.party_id}
+    assert event.evidence == {
+        "carrier": 99,
+        "owner_party": party.party_id,
+        "anchor": [0.0, 0.0],
+    }
 
 
 def test_bagagem_ambigua_nao_emite_evento_de_retirada():
