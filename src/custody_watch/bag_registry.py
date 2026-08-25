@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .config import RegistryConfig
 from .events import Event, EventKind, EventLog
-from .types import Bag, BagState, Observation
+from .types import Bag, BagState, Observation, Point
 
 DEFAULT_REGISTRY = RegistryConfig()
 
@@ -23,10 +23,35 @@ AMBIGUITY_RADIUS_M = DEFAULT_REGISTRY.ambiguity_radius_m
 class BagRegistry:
     def __init__(self, config: RegistryConfig = DEFAULT_REGISTRY) -> None:
         self._bags: dict[int, Bag] = {}
+        self._by_track: dict[int, int] = {}
         self._config = config
 
     def get(self, bag_id: int) -> Bag | None:
         return self._bags.get(bag_id)
+
+    def get_by_track(self, track_id: int) -> Bag | None:
+        """Bagagem que responde por este track.
+
+        Depois de uma readoção, um mesmo `bag_id` responde por mais de um
+        `track_id`. Enquanto não há religação os dois números são o mesmo, e é
+        por isso que o default do mapa é o próprio `track_id` — nada precisa
+        migrar.
+        """
+        return self._bags.get(self._by_track.get(track_id, track_id))
+
+    def link_track(self, track_id: int, bag_id: int) -> None:
+        """Faz um track novo responder por uma bagagem já registrada."""
+        if bag_id not in self._bags:
+            raise KeyError(f"bagagem {bag_id} não registrada")
+        self._by_track[track_id] = bag_id
+
+    def occluded_near(self, position: Point, radius: float) -> list[Bag]:
+        """Bagagens invisíveis cuja âncora está dentro do raio."""
+        return [
+            bag
+            for bag in self._bags.values()
+            if bag.occluded_since is not None and bag.anchor.distance_to(position) <= radius
+        ]
 
     def all(self) -> list[Bag]:
         return list(self._bags.values())
@@ -41,7 +66,7 @@ class BagRegistry:
         emite, senão cada frame geraria um evento. `t` vem de `observation.t`.
         Quando `events` é `None`, nada é emitido.
         """
-        bag = self._bags.get(observation.track_id)
+        bag = self.get_by_track(observation.track_id)
         if bag is None:
             bag = Bag(
                 bag_id=observation.track_id,
@@ -70,7 +95,7 @@ class BagRegistry:
         return bag
 
     def has_moved(self, observation: Observation) -> bool:
-        bag = self._bags.get(observation.track_id)
+        bag = self.get_by_track(observation.track_id)
         if bag is None:
             return False
         return bag.anchor.distance_to(observation.position) >= self._config.moved_threshold_m
