@@ -19,6 +19,7 @@ from custody_watch.tracking import TrackedDetection
 
 FPS = 25.0
 BAG, DONO, ESTRANHO = 900, 1, 2
+PASSANTE, LADRAO = 3, 4
 
 # Câmera de cima, 1px = 1cm. Homografia trivial mantém o teste legível:
 # o que está sob teste é a lógica de custódia, não a projeção.
@@ -182,6 +183,22 @@ def test_bagagem_que_volta_com_id_novo_e_readotada():
     assert religacoes[0].evidence["from_track"] == 901
 
 
+def test_bagagem_readotada_fica_estavel_ate_o_fim_do_video():
+    """`seen`/`missing` em `observe_bags` têm que ser chaveados por `bag_id`,
+    não por `track_id`. Depois da readoção o track novo (901) responde pelo
+    `bag_id` antigo (900) — se `seen`/`missing` usassem 901, a bagagem, que
+    está perfeitamente visível, nunca apareceria em `seen` (só 900 é
+    procurado), então cada frame a conta de `missing` para 900 estoura de
+    novo, abre uma oclusão, e o próprio `observe_bags` fecha essa oclusão no
+    frame seguinte (porque `get_by_track(901)` resolve para o bag 900 já
+    religado) — um ciclo de abre-fecha a cada `missing_frames_before_occluded`
+    quadros, pelo resto do vídeo. Estendendo a cena para 80s (bem além de
+    `max_occlusion_s`) para dar tempo do ciclo se manifestar."""
+    resultado = run_session(cena(1.0, bag_id_apos=901, duracao_s=80.0), PLANO, Config())
+
+    assert len(tipos(resultado, EventKind.BAG_OCCLUDED)) == 1
+
+
 def test_bagagem_que_nao_volta_resolve_com_quem_esteve_nela():
     """Quem responde é quem esteve ao alcance DURANTE a ausência, não quem
     está mais perto quando o timeout estoura — a essa altura o ladrão já saiu
@@ -190,6 +207,13 @@ def test_bagagem_que_nao_volta_resolve_com_quem_esteve_nela():
 
     (furto,) = tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER)
     assert furto.subject == ESTRANHO
+
+    # Carregada, não redundante: `update_attendance` precisa rodar mesmo
+    # enquanto a bagagem está oclusa (invisível), contra a âncora congelada.
+    # Se ela só rodar para bagagem vista (`if bag.bag_id in seen:`), o
+    # cronômetro de 25s desacompanhada congela durante a ausência e este
+    # BAG_UNATTENDED, que nasce ANTES do furto nesta mesma cena, some.
+    assert len(tipos(resultado, EventKind.BAG_UNATTENDED)) == 1
 
 
 def test_a_decisao_espera_o_timeout():
@@ -209,4 +233,94 @@ def test_varios_candidatos_suprimem_em_vez_de_acusar():
     resultado = run_session(multidao(), PLANO, Config())
 
     assert tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER) == []
+    assert len(tipos(resultado, EventKind.BAG_AMBIGUOUS)) == 1
+
+
+DURACAO_DOIS_EPISODIOS = 40.0 + Config().custody.max_occlusion_s + 15.0
+
+
+def dois_episodios(duracao_s: float = DURACAO_DOIS_EPISODIOS):
+    """Dono larga a bagagem aos 4s e sai. Dois episódios de oclusão, com
+    desfechos opostos.
+
+    Aos 10s, `PASSANTE` cruza em frente à bagagem por 0.4s e sai de cena — a
+    bagagem volta a ser vista sem incidente, episódio encerrado. Aos 40s,
+    `LADRAO` para na frente da bagagem e ela nunca mais reaparece,
+    ultrapassando `max_occlusion_s`: é esse segundo episódio que precisa
+    resolver, e só com `LADRAO` como candidato.
+    """
+    for i in range(int(duracao_s * FPS)):
+        t = i / FPS
+        det = [TrackedDetection(DONO, "person", caixa(dono_x(t), 11.0, 170))]
+
+        if t < 4.0:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(6.0 + t, 11.0, 55)))
+            yield t, det
+            continue
+
+        ocluida = False
+        if 10.0 <= t < 10.4:
+            det.append(TrackedDetection(PASSANTE, "person", caixa(10.0, 9.8, 170)))
+            ocluida = True
+        if t >= 40.0:
+            det.append(TrackedDetection(LADRAO, "person", caixa(10.0, 9.8, 170)))
+            ocluida = True
+
+        if not ocluida:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(10.0, 10.0, 55)))
+
+        yield t, det
+
+
+def test_candidatos_de_oclusao_nao_vazam_entre_episodios():
+    """`occlusion_candidates` tem que esvaziar quando uma oclusão termina.
+
+    Sem isso, o `PASSANTE` inocente do primeiro episódio (aos 10s, que só
+    ocluiu e foi embora) continuaria na lista quando o segundo episódio (o
+    `LADRAO`, aos 40s) estourasse o timeout. Ali `resolve_occlusion_timeout`
+    veria dois candidatos onde só há um culpado, e a regra de `len != 1`
+    rebaixaria um furto real para AMBIGUA -- a pior direção possível: um vazio
+    de estado transformando um caso resolvível em alerta suprimido."""
+    resultado = run_session(dois_episodios(), PLANO, Config())
+
+    furtos = tipos(resultado, EventKind.BAG_REMOVED_BY_STRANGER)
+    assert len(furtos) == 1
+    assert furtos[0].subject == LADRAO
+    assert tipos(resultado, EventKind.BAG_AMBIGUOUS) == []
+
+
+BAG_A, BAG_B, NOVO = 910, 911, 920
+
+
+def duas_perto_ocluidas():
+    """Duas bagagens a 0.3m uma da outra -- dentro do limiar de movimento
+    default de 0.5m, que é o raio de busca de `adopt_occluded` -- somem
+    juntas. Depois de ocluídas as duas, uma detecção com track novo reaparece
+    exatamente no meio do caminho entre elas: candidata a ambas, e não há
+    informação que desempate."""
+    for i in range(75):
+        t = i / FPS
+        det = []
+        if t < 1.0:
+            det.append(TrackedDetection(BAG_A, "suitcase", caixa(10.0, 10.0, 55)))
+            det.append(TrackedDetection(BAG_B, "suitcase", caixa(10.3, 10.0, 55)))
+        elif t < 2.0:
+            pass  # janela de ausência: as duas somem ao mesmo tempo
+        else:
+            det.append(TrackedDetection(NOVO, "suitcase", caixa(10.15, 10.0, 55)))
+        yield t, det
+
+
+def test_readocao_com_mais_de_uma_candidata_marca_ambigua_e_nao_adota():
+    """Regra P3 aplicada em `adopt_occluded`: com mais de uma candidata no
+    raio, chutar qual é qual corrompe o mapa de posse. A única saída correta
+    é marcar as vizinhas como AMBIGUA e não religar o track novo a bagagem
+    nenhuma -- as duas metades da mesma decisão, e as duas ficam sem teste
+    até este."""
+    resultado = run_session(duas_perto_ocluidas(), PLANO, Config())
+
+    religacoes_de_bagagem = [
+        e for e in tipos(resultado, EventKind.TRACK_RELINKED) if e.bag is not None
+    ]
+    assert religacoes_de_bagagem == []
     assert len(tipos(resultado, EventKind.BAG_AMBIGUOUS)) == 1

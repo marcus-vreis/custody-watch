@@ -164,6 +164,32 @@ def test_ocluidas_no_raio_respeita_a_distancia():
     assert registry.occluded_near(Point(9.0, 9.0), radius=0.5) == []
 
 
+def test_ocluidas_no_raio_ignora_bagagem_ja_resolvida():
+    """Uma âncora cuja custódia já foi decidida (RETIRADA_ESTRANHO) não pode
+    seguir como alvo de readoção: senão uma bagagem genuinamente nova largada
+    no mesmo lugar é engolida pela antiga, terminal, e nunca aparece de novo
+    -- sem `BAG_APPEARED`, sem posse. Esse teste cai se qualquer um dos dois
+    checks de estado (`TERMINAL_BAG_STATES` ou `AMBIGUA`) for removido: a
+    bagagem terminal e a ambígua estão a distâncias diferentes da posição
+    consultada, e as duas precisam ficar de fora.
+    """
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.get(1).occluded_since = 3.0
+    registry.get(1).state = BagState.RETIRADA_ESTRANHO
+
+    registry.observe(obs(2, 5.3, 5.0, t=0.0))
+    registry.get(2).occluded_since = 3.0
+    registry.get(2).state = BagState.AMBIGUA
+
+    registry.observe(obs(3, 5.1, 5.0, t=0.0))
+    registry.get(3).occluded_since = 3.0
+
+    perto = registry.occluded_near(Point(5.05, 5.0), radius=1.0)
+
+    assert [bag.bag_id for bag in perto] == [3]
+
+
 def test_has_moved_segue_o_track_religado():
     registry = BagRegistry()
     registry.observe(obs(1, 5.0, 5.0, t=0.0))

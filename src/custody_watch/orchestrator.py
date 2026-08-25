@@ -22,10 +22,14 @@ grupo de um na hora.
 ## Quando uma bagagem foi levada
 
 O ground truth do CAVIAR simplesmente para de anotar a bagagem quando ela é
-recolhida. Então ausência sustentada conta como retirada, e o carregador é a
-pessoa mais próxima da âncora — considerando tanto o último frame em que a
-bagagem apareceu quanto o momento atual, porque quem levou pode ter chegado
-depois de o tracker perder a bagagem.
+recolhida, então ausência sustentada é o único sinal disponível — mas decidir
+no instante do sumiço é o defeito: quem está mais perto ali é, com a mesma
+frequência, quem só passava na frente. Agora a ausência **adia** a decisão:
+abre uma janela de oclusão que acumula quem esteve ao alcance da âncora
+enquanto a bagagem esteve invisível, e é a saída da janela quem decide. Volta
+a ser vista: nada aconteceu, `BAG_OCCLUDED` registra o intervalo. Estoura
+`max_occlusion_s` primeiro: resolve com quem foi lembrado, ou suprime sob a
+regra P3 se sobrou zero ou mais de um candidato.
 """
 
 from __future__ import annotations
@@ -87,7 +91,6 @@ class _Session:
 
         self.history: dict[int, list[Observation]] = {}
         self.missing: dict[int, int] = {}
-        self.last_people: dict[int, list[Observation]] = {}
 
         # Marcações para não repetir o mesmo flag a cada frame.
         self.near_since: dict[tuple[int, int], float] = {}
@@ -282,8 +285,6 @@ class _Session:
                     self.registry.assign_owner(
                         bag.bag_id, self.party_for(carrier.track_id), t=self.t, events=self.events
                     )
-
-            self.last_people[bag.bag_id] = people
 
         return seen
 

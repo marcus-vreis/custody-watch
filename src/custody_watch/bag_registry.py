@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .config import RegistryConfig
 from .events import Event, EventKind, EventLog
-from .types import Bag, BagState, Observation, Point
+from .types import TERMINAL_BAG_STATES, Bag, BagState, Observation, Point
 
 DEFAULT_REGISTRY = RegistryConfig()
 
@@ -46,11 +46,20 @@ class BagRegistry:
         self._by_track[track_id] = bag_id
 
     def occluded_near(self, position: Point, radius: float) -> list[Bag]:
-        """Bagagens invisíveis cuja âncora está dentro do raio."""
+        """Bagagens invisíveis cuja âncora está dentro do raio.
+
+        Bagagem já resolvida não entra: uma âncora cuja custódia foi decidida
+        deixa de ser alvo de readoção, senão uma bagagem genuinamente nova
+        deixada no mesmo lugar é engolida pela antiga — sem `BAG_APPEARED`,
+        sem posse, e invisível para sempre, porque a hospedeira é terminal.
+        """
         return [
             bag
             for bag in self._bags.values()
-            if bag.occluded_since is not None and bag.anchor.distance_to(position) <= radius
+            if bag.occluded_since is not None
+            and bag.state not in TERMINAL_BAG_STATES
+            and bag.state is not BagState.AMBIGUA
+            and bag.anchor.distance_to(position) <= radius
         ]
 
     def all(self) -> list[Bag]:
