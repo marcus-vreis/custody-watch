@@ -117,4 +117,38 @@ def degrade(
         yield t, saida
 
 
-__all__ = ["NoiseModel", "degrade"]
+CAVIAR_PERSON_NOISE = NoiseModel(
+    drop_rate=0.16,
+    drop_burst_frames=12,
+    position_sigma_px=2.32,
+    id_switch_rate=0.016,
+)
+"""Ruído de pessoa medido no CAVIAR por `scripts/measure_noise.py`.
+
+Medido: 1.677 de 5.493 pessoas anotadas foram pareadas com IoU ≥ 0,5, o que
+dá 69,5% de quadros perdidos em 326 rajadas de 11,7 quadros em média. `0.16`
+é a taxa de **entrada** em falha que produz esses 69,5% em estado
+estacionário, resolvendo `(1-r)/(1-r+r*B) = 0,305` com `B = 12`. Não é a
+fração perdida: pôr 0,695 aqui daria quase 96% de perda.
+
+A rajada tem comprimento **fixo**, e isso é simplificação declarada. A
+distribuição real é pesada na cauda — mediana de 2 quadros, p95 de 56, máxima
+de 517 — e uma rajada fixa de 12 não produz nem as curtas nem as muito longas.
+Para a lógica isso sobre-estima a frequência com que a oclusão é acionada:
+toda rajada cruza os 5 quadros de `missing_frames_before_occluded`, quando na
+realidade metade delas não cruzaria.
+
+`position_sigma_px` usa o desvio de `dy` (2,32px) e não o de `dx` (1,45px),
+que é o conservador e também o certo: `ground_plane.foot_point` projeta a
+**base** da caixa, então é a borda de baixo que decide a posição no chão — e é
+justamente a mais instável das duas.
+
+Existe porque a varredura precisa de um eixo fixo: o interesse é a bagagem, e
+mexer nos dois ao mesmo tempo produziria uma tabela em que nenhuma célula
+significa alguma coisa.
+
+Para bagagem não há constante equivalente, e a ausência é o desenho: uma
+detecção pareada em 1.686 não estima nada. A bagagem é a variável varrida.
+"""
+
+__all__ = ["CAVIAR_PERSON_NOISE", "NoiseModel", "degrade"]
