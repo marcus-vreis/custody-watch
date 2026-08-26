@@ -3,12 +3,28 @@
 
 A pergunta não é "qual é o ruído do nosso detector" — para bagagem não há
 amostra que responda, uma detecção pareada em 1.686. A pergunta é **quão bom o
-detector precisa ficar** para a camada de lógica caber no orçamento do
-operador, e é ela que a gravação encenada precisa responder.
+detector precisa ficar**, e é ela que a gravação encenada precisa responder.
 
-No CAVIAR a verdade é conhecida sem anotação nenhuma: os quatro clipes contêm
-**zero furtos**, então qualquer `BAG_REMOVED_BY_STRANGER` é falso por
-construção.
+## Um eixo por vez
+
+A primeira versão desta varredura fixava o ruído de pessoa no valor medido e
+varria só a bagagem. Não funcionou, e o motivo é o resultado: **o ruído de
+pessoa medido já destrói o pipeline sozinho.** Com 69,5% de falha, metade das
+bagagens nunca ganha dono, e bagagem órfã não acumula tempo desacompanhado.
+O eixo varrido não tinha o que mostrar, porque o eixo fixo tinha chegado antes.
+
+Então cada eixo é varrido com o outro **limpo**. Isso é irreal de propósito:
+o objetivo é o requisito por eixo, não o comportamento num ponto de operação.
+
+## O modo de falha que importa
+
+A primeira versão também mediu a coisa errada. Sob ruído o sistema quase não
+inventa furto — ele **fica mudo**. Falso alarme por minuto fica em zero em
+quase toda a tabela, e um zero por silêncio lê como sucesso.
+
+Então a coluna que decide é `retidos`: quantos dos eventos verdadeiros da
+execução limpa sobrevivem. Falso alarme continua reportado, porque quando ele
+aparece importa muito — mas ele não é onde a degradação mora.
 
     uv run python scripts/envelope.py
 """
@@ -17,39 +33,53 @@ from __future__ import annotations
 
 import statistics as st
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from custody_watch.caviar import SCENARIOS, estimate_metres_per_pixel, ground_plane, load_clip
 from custody_watch.config import load_config
 from custody_watch.events import EventKind
-from custody_watch.noise import CAVIAR_PERSON_NOISE, NoiseModel, degrade
+from custody_watch.noise import NoiseModel, degrade
 from custody_watch.orchestrator import run_session
 
 RAIZ = Path(__file__).resolve().parent.parent
 DATA = RAIZ / "data" / "caviar"
 CONFIG = RAIZ / "config" / "caviar.json"
 
-TAXAS_DE_FALHA = (0.0, 0.1, 0.3, 0.5, 0.7, 0.9)
-ERROS_DE_POSICAO_PX = (0.0, 2.0, 4.0, 8.0)
-SEMENTES = (1, 2, 3, 4, 5)
+TAXAS_DE_FALHA = (0.0, 0.05, 0.10, 0.20, 0.40, 0.80)
+ERROS_DE_POSICAO_PX = (0.0, 1.0, 2.0, 4.0, 8.0)
+SEMENTES = tuple(range(1, 9))
 RAJADA_QUADROS = 12
+LIMPO = NoiseModel()
+
+VARREDURAS = (
+    ("PESSOA — falha de deteccao", "person", "drop_rate", TAXAS_DE_FALHA, "{:.0%}"),
+    ("PESSOA — erro de posicao", "person", "position_sigma_px", ERROS_DE_POSICAO_PX, "{:.1f}px"),
+    ("BAGAGEM — falha de deteccao", "bag", "drop_rate", TAXAS_DE_FALHA, "{:.0%}"),
+    ("BAGAGEM — erro de posicao", "bag", "position_sigma_px", ERROS_DE_POSICAO_PX, "{:.1f}px"),
+)
 
 
-def _uma_passada(bag: NoiseModel, seed: int, plane, config) -> tuple[int, int, float]:
-    """Devolve (falsos furtos, abandonos verdadeiros, minutos)."""
-    falsos = verdadeiros = 0
+def _uma_passada(person: NoiseModel, bag: NoiseModel, seed: int, plane, config):
+    """Devolve (falsos furtos, posses, abandonos, minutos)."""
+    falsos = posses = abandonos = 0
     minutos = 0.0
 
     for indice, scenario in enumerate(SCENARIOS):
-        limpo = load_clip(DATA, scenario, with_appearance=True)
-        sujo = degrade(limpo, person=CAVIAR_PERSON_NOISE, bag=bag, seed=seed * 100 + indice)
+        sujo = degrade(
+            load_clip(DATA, scenario, with_appearance=True),
+            person=person,
+            bag=bag,
+            seed=seed * 100 + indice,
+        )
         resultado = run_session(sujo, plane, config)
 
         falsos += len(resultado.events.of_kind(EventKind.BAG_REMOVED_BY_STRANGER))
-        verdadeiros += len(resultado.events.of_kind(EventKind.BAG_UNATTENDED))
+        posses += len(resultado.events.of_kind(EventKind.BAG_OWNED))
+        abandonos += len(resultado.events.of_kind(EventKind.BAG_UNATTENDED))
         minutos += resultado.duration_s / 60.0
 
-    return falsos, verdadeiros, minutos
+    return falsos, posses, abandonos, minutos
 
 
 def main() -> int:
@@ -62,53 +92,55 @@ def main() -> int:
     plane = ground_plane(estimate_metres_per_pixel(DATA))
     orcamento = config.alerts.operator_hourly_budget / 60.0
 
-    print(f"ruido de pessoa fixo em {CAVIAR_PERSON_NOISE}")
-    print(f"rajada de falha de bagagem: {RAJADA_QUADROS} quadros")
+    _, posses_base, abandonos_base, _ = _uma_passada(LIMPO, LIMPO, 1, plane, config)
+
     print(f"limiar de desacompanhamento: {config.custody.unattended_time_s}s")
     print(f"orcamento do operador: {config.alerts.operator_hourly_budget}/h = {orcamento:.2f}/min")
-    print(f"{len(SEMENTES)} sementes por celula\n")
-
+    print(f"rajada de falha: {RAJADA_QUADROS} quadros   |   {len(SEMENTES)} sementes por celula")
+    print(f"execucao limpa: {posses_base} posses, {abandonos_base} abandonos\n")
     print("Os quatro clipes do CAVIAR contem ZERO furtos: todo furto abaixo e falso.")
-    print("A coluna 'abandonos' e a guarda contra vacuidade -- se ela zera, o zero")
-    print("de falsos alarmes so significa que o sistema parou de ver qualquer coisa.\n")
+    print("`retidos` e a fracao dos abandonos da execucao limpa que sobrevive -- e a")
+    print("coluna que decide, porque sob ruido o sistema fica mudo, nao grita lobo.\n")
+    sys.stdout.flush()
 
-    cabecalho = f"{'falha':>7}{'erro':>7}  {'falsos/min':>22}  {'abandonos':>11}  veredito"
-    print(cabecalho)
-    print("-" * len(cabecalho))
+    for titulo, eixo, campo, valores, formato in VARREDURAS:
+        print(f"### {titulo}   (o outro eixo limpo)")
+        cabecalho = f"{'valor':>8}  {'falsos/min':>18}{'posses':>9}{'retidos':>10}  veredito"
+        print(cabecalho)
+        print("-" * len(cabecalho))
 
-    for taxa in TAXAS_DE_FALHA:
-        for erro in ERROS_DE_POSICAO_PX:
-            bag = NoiseModel(
-                drop_rate=taxa,
-                drop_burst_frames=RAJADA_QUADROS,
-                position_sigma_px=erro,
-            )
+        for valor in valores:
+            modelo = replace(LIMPO, **{campo: valor, "drop_burst_frames": RAJADA_QUADROS})
+            person = modelo if eixo == "person" else LIMPO
+            bag = modelo if eixo == "bag" else LIMPO
 
             por_minuto: list[float] = []
-            abandonos: list[int] = []
+            posses: list[int] = []
+            retidos: list[float] = []
             for seed in SEMENTES:
-                falsos, verdadeiros, minutos = _uma_passada(bag, seed, plane, config)
+                falsos, p, a, minutos = _uma_passada(person, bag, seed, plane, config)
                 por_minuto.append(falsos / minutos)
-                abandonos.append(verdadeiros)
+                posses.append(p)
+                retidos.append(a / abandonos_base)
 
             media = st.mean(por_minuto)
-            desvio = st.pstdev(por_minuto)
-            vistos = st.mean(abandonos)
+            retido = st.mean(retidos)
 
-            if vistos < 0.5:
-                veredito = "VACUO: nao ve mais nada"
-            elif media <= orcamento:
-                veredito = "dentro do orcamento"
-            else:
+            if retido < 0.5:
+                veredito = "MUDO: perde metade dos eventos"
+            elif media > orcamento:
                 veredito = "ESTOURA o orcamento"
+            else:
+                veredito = "opera"
 
             print(
-                f"{taxa:>6.0%}{erro:>6.1f}px  {media:>10.2f} +- {desvio:<8.2f}"
-                f"{vistos:>11.1f}  {veredito}"
+                f"{formato.format(valor):>8}  {media:>8.2f} +- {st.pstdev(por_minuto):<7.2f}"
+                f"{st.mean(posses):>9.1f}{retido:>9.0%}  {veredito}"
             )
+            sys.stdout.flush()
         print()
 
-    print("Isto mede degradacao da logica sob ruido sintetico, com movimento humano")
+    print("Isto mede degradacao da LOGICA sob ruido sintetico, com movimento humano")
     print("real por baixo. Nao mede percepcao, e nao substitui a gravacao encenada.")
     return 0
 
