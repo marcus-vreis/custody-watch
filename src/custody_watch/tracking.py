@@ -32,6 +32,26 @@ class TrackedDetection:
     appearance: Appearance | None = None
 
 
+def iou(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """Interseção sobre união de duas caixas, em pixel.
+
+    Vive aqui porque é a primitiva que pareia detecção com anotação, e dois
+    scripts de medição precisavam dela — copiada, ela sairia de sincronia com
+    a definição que os números publicados usaram.
+    """
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+
+    if ix2 <= ix1 or iy2 <= iy1:
+        return 0.0
+
+    inter = (ix2 - ix1) * (iy2 - iy1)
+    uniao = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter
+    return inter / uniao if uniao > 0 else 0.0
+
+
 def to_observations(
     tracked: Iterable[TrackedDetection], plane: GroundPlane, t: float
 ) -> list[Observation]:
@@ -119,6 +139,7 @@ class PlausibilityGate:
 
 
 __all__ = [
+    "iou",
     "MAX_OBSERVATION_SPEED_MS",
     "PlausibilityGate",
     "TrackedDetection",
