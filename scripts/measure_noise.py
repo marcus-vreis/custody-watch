@@ -20,9 +20,11 @@ from __future__ import annotations
 import statistics as st
 import sys
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from custody_watch.caviar import SCENARIOS, _parse_frames
+from custody_watch.tracking import iou
 from custody_watch.video import VideoSource
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -30,21 +32,101 @@ DATA = RAIZ / "data" / "caviar"
 IOU_MINIMO = 0.5
 
 
-def iou(a: tuple[float, ...], b: tuple[float, ...]) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
-    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
-    if ix2 <= ix1 or iy2 <= iy1:
-        return 0.0
-    inter = (ix2 - ix1) * (iy2 - iy1)
-    uniao = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter
-    return inter / uniao if uniao > 0 else 0.0
+@dataclass
+class _Amostra:
+    """O que a medição acumula ao longo dos quatro clipes."""
+
+    anotadas: int = 0
+    pareadas: int = 0
+    erros_x: list[float] = field(default_factory=list)
+    erros_y: list[float] = field(default_factory=list)
+    rajadas: list[int] = field(default_factory=list)
+    trocas: int = 0
 
 
-def pe(caixa: tuple[float, float, float, float]) -> tuple[float, float]:
+def _pe(caixa: tuple[float, float, float, float]) -> tuple[float, float]:
+    """Base da caixa — é ela que o `ground_plane` projeta no chão."""
     x1, _, x2, y2 = caixa
     return ((x1 + x2) / 2.0, y2)
+
+
+def _melhor_par(caixa, pessoas):
+    """A detecção de maior IoU acima do mínimo, ou `None`."""
+    melhor, melhor_iou = None, IOU_MINIMO
+
+    for deteccao in pessoas:
+        valor = iou(deteccao.bbox, caixa.bbox)
+        if valor >= melhor_iou:
+            melhor, melhor_iou = deteccao, valor
+
+    return melhor
+
+
+def _mede_clipe(scenario: str, xml: str, amostra: _Amostra) -> None:
+    """Percorre um clipe, pareando cada pessoa anotada com uma detecção."""
+    anotado = dict(_parse_frames(DATA / scenario / xml))
+    atribuido: dict[int, int] = {}
+    ausente: dict[int, int] = defaultdict(int)
+
+    for indice, quadro in enumerate(VideoSource(DATA / scenario / f"{scenario}.mpg")):
+        verdade = anotado.get(indice)
+        if verdade is None:
+            continue
+
+        pessoas = [d for d in quadro.tracked if d.cls == "person"]
+
+        for caixa in (c for c in verdade if not c.is_bag):
+            amostra.anotadas += 1
+            melhor = _melhor_par(caixa, pessoas)
+
+            if melhor is None:
+                ausente[caixa.track_id] += 1
+                continue
+
+            if ausente[caixa.track_id]:
+                amostra.rajadas.append(ausente[caixa.track_id])
+                ausente[caixa.track_id] = 0
+
+            amostra.pareadas += 1
+            ax, ay = _pe(caixa.bbox)
+            dx, dy = _pe(melhor.bbox)
+            amostra.erros_x.append(dx - ax)
+            amostra.erros_y.append(dy - ay)
+
+            anterior = atribuido.get(caixa.track_id)
+            if anterior is not None and anterior != melhor.track_id:
+                amostra.trocas += 1
+            atribuido[caixa.track_id] = melhor.track_id
+
+    amostra.rajadas.extend(v for v in ausente.values() if v)
+
+
+def _relata(amostra: _Amostra) -> None:
+    fracao = amostra.pareadas / amostra.anotadas
+
+    print(f"pessoas anotadas   : {amostra.anotadas}")
+    print(f"pareadas (IoU>={IOU_MINIMO}): {amostra.pareadas}  ({fracao:.1%})")
+    print(f"taxa de falha      : {1 - fracao:.1%}")
+    print()
+
+    print("erro do pe da caixa, em pixel:")
+    for nome, valores in (("dx", amostra.erros_x), ("dy", amostra.erros_y)):
+        p95 = sorted(abs(v) for v in valores)[int(0.95 * len(valores))]
+        print(
+            f"  {nome}: media {st.mean(valores):+.2f}  "
+            f"desvio {st.pstdev(valores):.2f}  p95 |{p95:.2f}|"
+        )
+
+    print()
+    print(f"rajadas de falha   : {len(amostra.rajadas)} rajadas")
+    if amostra.rajadas:
+        ordenado = sorted(amostra.rajadas)
+        print(
+            f"  mediana {st.median(ordenado):.0f} quadros, "
+            f"p95 {ordenado[int(0.95 * len(ordenado))]} quadros, "
+            f"maxima {max(ordenado)} quadros"
+        )
+    print(f"trocas de id       : {amostra.trocas} em {amostra.pareadas} pareamentos")
 
 
 def main() -> int:
@@ -52,77 +134,11 @@ def main() -> int:
         print(f"dataset ausente em {DATA}", file=sys.stderr)
         return 1
 
-    erros_x: list[float] = []
-    erros_y: list[float] = []
-    rajadas: list[int] = []
-    trocas = 0
-    total_anotado = 0
-    total_pareado = 0
-
+    amostra = _Amostra()
     for scenario, xml in SCENARIOS.items():
-        anotado = dict(_parse_frames(DATA / scenario / xml))
-        atribuido: dict[int, int] = {}
-        ausente: dict[int, int] = defaultdict(int)
+        _mede_clipe(scenario, xml, amostra)
 
-        for indice, quadro in enumerate(VideoSource(DATA / scenario / f"{scenario}.mpg")):
-            verdade = anotado.get(indice)
-            if verdade is None:
-                continue
-
-            pessoas = [d for d in quadro.tracked if d.cls == "person"]
-
-            for caixa in verdade:
-                if caixa.is_bag:
-                    continue
-                total_anotado += 1
-
-                melhor, melhor_iou = None, IOU_MINIMO
-                for det in pessoas:
-                    valor = iou(det.bbox, caixa.bbox)
-                    if valor >= melhor_iou:
-                        melhor, melhor_iou = det, valor
-
-                if melhor is None:
-                    ausente[caixa.track_id] += 1
-                    continue
-
-                if ausente[caixa.track_id]:
-                    rajadas.append(ausente[caixa.track_id])
-                    ausente[caixa.track_id] = 0
-
-                total_pareado += 1
-                ax, ay = pe(caixa.bbox)
-                dx, dy = pe(melhor.bbox)
-                erros_x.append(dx - ax)
-                erros_y.append(dy - ay)
-
-                anterior = atribuido.get(caixa.track_id)
-                if anterior is not None and anterior != melhor.track_id:
-                    trocas += 1
-                atribuido[caixa.track_id] = melhor.track_id
-
-        rajadas.extend(v for v in ausente.values() if v)
-
-    print(f"pessoas anotadas   : {total_anotado}")
-    print(f"pareadas (IoU>=0.5): {total_pareado}  ({total_pareado / total_anotado:.1%})")
-    print(f"taxa de falha      : {1 - total_pareado / total_anotado:.1%}\n")
-
-    print("erro do pe da caixa, em pixel:")
-    for nome, valores in (("dx", erros_x), ("dy", erros_y)):
-        print(
-            f"  {nome}: media {st.mean(valores):+.2f}  desvio {st.pstdev(valores):.2f}  "
-            f"p95 |{sorted(abs(v) for v in valores)[int(0.95 * len(valores))]:.2f}|"
-        )
-
-    print(f"\nrajadas de falha   : {len(rajadas)} rajadas")
-    if rajadas:
-        ordenado = sorted(rajadas)
-        print(
-            f"  mediana {st.median(ordenado):.0f} quadros, "
-            f"p95 {ordenado[int(0.95 * len(ordenado))]} quadros, "
-            f"maxima {max(ordenado)} quadros"
-        )
-    print(f"trocas de id       : {trocas} em {total_pareado} pareamentos")
+    _relata(amostra)
     return 0
 
 

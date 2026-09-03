@@ -129,8 +129,12 @@ def test_mesma_semente_reproduz():
             )
         ]
 
-    assert rodar(11) == rodar(11)
-    assert rodar(11) != rodar(12)
+    primeira = rodar(11)
+    segunda = rodar(11)
+    outra = rodar(12)
+
+    assert primeira == segunda
+    assert primeira != outra
 
 
 def test_aparencia_atravessa_intacta():

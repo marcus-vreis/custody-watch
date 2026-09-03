@@ -17,9 +17,10 @@ gravadas, com timing real. O que este módulo acrescenta é degradação.
 
 from __future__ import annotations
 
-import random
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
+
+import numpy as np
 
 from .tracking import TrackedDetection
 from .types import BAG_CLASSES
@@ -58,6 +59,80 @@ class _Track:
     id_atual: int | None = None
 
 
+class _Degrader:
+    """Uma passagem de degradação: o gerador, e os tracks vistos até agora.
+
+    A ordem das chamadas ao gerador é parte do contrato — falha, depois id,
+    depois posição. Trocar a ordem muda toda saída semeada, e com ela a
+    calibração medida de `CAVIAR_PERSON_NOISE`.
+
+    Usa o gerador do numpy e não o do módulo `random`. Não é preferência: é o
+    gerador idiomático para ruído numérico, numpy já é dependência do projeto,
+    e o `random` da biblioteca padrão é sinalizado por analisadores estáticos
+    como inseguro — sinalização correta em contexto de segurança e sem sentido
+    aqui, onde o gerador existe justamente para ser **reprodutível**.
+    """
+
+    def __init__(self, person: NoiseModel, bag: NoiseModel, seed: int) -> None:
+        self._rng = np.random.default_rng(seed)
+        self._person = person
+        self._bag = bag
+        self._tracks: dict[int, _Track] = {}
+        self._proximo_id = 10_000
+
+    def _falhou(self, track: _Track, modelo: NoiseModel) -> bool:
+        """A detecção some neste quadro?"""
+        if track.ausente > 0:
+            track.ausente -= 1
+            return True
+
+        if modelo.drop_rate > 0.0 and self._rng.random() < modelo.drop_rate:
+            # A rajada inclui o quadro do gatilho: o contador guarda só os
+            # quadros que faltam depois dele, senão uma rajada de 1 apagaria 2.
+            track.ausente = max(1, modelo.drop_burst_frames) - 1
+            return True
+
+        return False
+
+    def _identidade(self, track: _Track, modelo: NoiseModel, original: int) -> int:
+        """O id que o tracker reporta. Uma troca persiste até o fim."""
+        if (
+            track.id_atual is None
+            and modelo.id_switch_rate > 0.0
+            and self._rng.random() < modelo.id_switch_rate
+        ):
+            self._proximo_id += 1
+            track.id_atual = self._proximo_id
+
+        return track.id_atual if track.id_atual is not None else original
+
+    def _posicao(
+        self, modelo: NoiseModel, caixa: tuple[float, float, float, float]
+    ) -> tuple[float, float, float, float]:
+        """Translada a caixa inteira. Mexer numa borda só mudaria o tamanho,
+        e é o tamanho que o `ground_plane` usa para achar o pé."""
+        if modelo.position_sigma_px <= 0.0:
+            return caixa
+
+        dx = self._rng.normal(0.0, modelo.position_sigma_px)
+        dy = self._rng.normal(0.0, modelo.position_sigma_px)
+        return (caixa[0] + dx, caixa[1] + dy, caixa[2] + dx, caixa[3] + dy)
+
+    def uma(self, deteccao: TrackedDetection) -> TrackedDetection | None:
+        """Degrada uma detecção. `None` quando ela some neste quadro."""
+        modelo = self._bag if deteccao.cls in BAG_CLASSES else self._person
+        track = self._tracks.setdefault(deteccao.track_id, _Track())
+
+        if self._falhou(track, modelo):
+            return None
+
+        return replace(
+            deteccao,
+            track_id=self._identidade(track, modelo, deteccao.track_id),
+            bbox=self._posicao(modelo, deteccao.bbox),
+        )
+
+
 def degrade(
     frames: Iterator[tuple[float, list[TrackedDetection]]],
     *,
@@ -70,51 +145,11 @@ def degrade(
     Pessoa e bagagem têm modelos separados de propósito: a varredura isola um
     eixo por vez, e um modelo só faria os dois se moverem juntos.
     """
-    rng = random.Random(seed)
-    estado: dict[int, _Track] = {}
-    proximo_id = 10_000
+    degradador = _Degrader(person, bag, seed)
 
     for t, deteccoes in frames:
-        saida: list[TrackedDetection] = []
-
-        for deteccao in deteccoes:
-            modelo = bag if deteccao.cls in BAG_CLASSES else person
-            track = estado.setdefault(deteccao.track_id, _Track())
-
-            if track.ausente > 0:
-                track.ausente -= 1
-                continue
-
-            if modelo.drop_rate > 0.0 and rng.random() < modelo.drop_rate:
-                # A rajada inclui o quadro do gatilho: o contador guarda só
-                # os quadros que faltam depois dele, senão uma rajada de 1
-                # quadro apagaria 2.
-                track.ausente = max(1, modelo.drop_burst_frames) - 1
-                continue
-
-            if (
-                track.id_atual is None
-                and modelo.id_switch_rate > 0.0
-                and rng.random() < modelo.id_switch_rate
-            ):
-                proximo_id += 1
-                track.id_atual = proximo_id
-
-            caixa = deteccao.bbox
-            if modelo.position_sigma_px > 0.0:
-                dx = rng.gauss(0.0, modelo.position_sigma_px)
-                dy = rng.gauss(0.0, modelo.position_sigma_px)
-                caixa = (caixa[0] + dx, caixa[1] + dy, caixa[2] + dx, caixa[3] + dy)
-
-            saida.append(
-                replace(
-                    deteccao,
-                    track_id=track.id_atual if track.id_atual is not None else deteccao.track_id,
-                    bbox=caixa,
-                )
-            )
-
-        yield t, saida
+        sujas = (degradador.uma(deteccao) for deteccao in deteccoes)
+        yield t, [suja for suja in sujas if suja is not None]
 
 
 CAVIAR_PERSON_NOISE = NoiseModel(

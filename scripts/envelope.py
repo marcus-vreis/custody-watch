@@ -59,9 +59,11 @@ VARREDURAS = (
     ("BAGAGEM — erro de posicao", "bag", "position_sigma_px", ERROS_DE_POSICAO_PX, "{:.1f}px"),
 )
 
+CABECALHO = f"{'valor':>8}  {'falsos/min':>18}{'posses':>9}{'retidos':>10}  veredito"
+
 
 def _uma_passada(person: NoiseModel, bag: NoiseModel, seed: int, plane, config):
-    """Devolve (falsos furtos, posses, abandonos, minutos)."""
+    """Devolve (falsos furtos, posses, abandonos, minutos) sobre os quatro clipes."""
     falsos = posses = abandonos = 0
     minutos = 0.0
 
@@ -82,6 +84,54 @@ def _uma_passada(person: NoiseModel, bag: NoiseModel, seed: int, plane, config):
     return falsos, posses, abandonos, minutos
 
 
+def _celula(person: NoiseModel, bag: NoiseModel, plane, config, base: int):
+    """Uma célula da tabela: várias sementes do mesmo ponto de operação."""
+    por_minuto: list[float] = []
+    posses: list[int] = []
+    retidos: list[float] = []
+
+    for seed in SEMENTES:
+        falsos, p, a, minutos = _uma_passada(person, bag, seed, plane, config)
+        por_minuto.append(falsos / minutos)
+        posses.append(p)
+        retidos.append(a / base)
+
+    return st.mean(por_minuto), st.pstdev(por_minuto), st.mean(posses), st.mean(retidos)
+
+
+def _veredito(retido: float, falsos: float, orcamento: float) -> str:
+    """Silêncio vem primeiro: com o sistema mudo, zero falso alarme não é
+    aprovação, é ausência de qualquer coisa para aprovar."""
+    if retido < 0.5:
+        return "MUDO: perde metade dos eventos"
+    if falsos > orcamento:
+        return "ESTOURA o orcamento"
+    return "opera"
+
+
+def _varre(varredura, plane, config, base: int, orcamento: float) -> None:
+    titulo, eixo, campo, valores, formato = varredura
+
+    print(f"### {titulo}   (o outro eixo limpo)")
+    print(CABECALHO)
+    print("-" * len(CABECALHO))
+
+    for valor in valores:
+        modelo = replace(LIMPO, **{campo: valor, "drop_burst_frames": RAJADA_QUADROS})
+        person = modelo if eixo == "person" else LIMPO
+        bag = modelo if eixo == "bag" else LIMPO
+
+        media, desvio, posses, retido = _celula(person, bag, plane, config, base)
+
+        print(
+            f"{formato.format(valor):>8}  {media:>8.2f} +- {desvio:<7.2f}"
+            f"{posses:>9.1f}{retido:>9.0%}  {_veredito(retido, media, orcamento)}"
+        )
+        sys.stdout.flush()
+
+    print()
+
+
 def main() -> int:
     if not DATA.exists():
         print(f"dataset ausente em {DATA}", file=sys.stderr)
@@ -97,48 +147,16 @@ def main() -> int:
     print(f"limiar de desacompanhamento: {config.custody.unattended_time_s}s")
     print(f"orcamento do operador: {config.alerts.operator_hourly_budget}/h = {orcamento:.2f}/min")
     print(f"rajada de falha: {RAJADA_QUADROS} quadros   |   {len(SEMENTES)} sementes por celula")
-    print(f"execucao limpa: {posses_base} posses, {abandonos_base} abandonos\n")
+    print(f"execucao limpa: {posses_base} posses, {abandonos_base} abandonos")
+    print()
     print("Os quatro clipes do CAVIAR contem ZERO furtos: todo furto abaixo e falso.")
     print("`retidos` e a fracao dos abandonos da execucao limpa que sobrevive -- e a")
-    print("coluna que decide, porque sob ruido o sistema fica mudo, nao grita lobo.\n")
+    print("coluna que decide, porque sob ruido o sistema fica mudo, nao grita lobo.")
+    print()
     sys.stdout.flush()
 
-    for titulo, eixo, campo, valores, formato in VARREDURAS:
-        print(f"### {titulo}   (o outro eixo limpo)")
-        cabecalho = f"{'valor':>8}  {'falsos/min':>18}{'posses':>9}{'retidos':>10}  veredito"
-        print(cabecalho)
-        print("-" * len(cabecalho))
-
-        for valor in valores:
-            modelo = replace(LIMPO, **{campo: valor, "drop_burst_frames": RAJADA_QUADROS})
-            person = modelo if eixo == "person" else LIMPO
-            bag = modelo if eixo == "bag" else LIMPO
-
-            por_minuto: list[float] = []
-            posses: list[int] = []
-            retidos: list[float] = []
-            for seed in SEMENTES:
-                falsos, p, a, minutos = _uma_passada(person, bag, seed, plane, config)
-                por_minuto.append(falsos / minutos)
-                posses.append(p)
-                retidos.append(a / abandonos_base)
-
-            media = st.mean(por_minuto)
-            retido = st.mean(retidos)
-
-            if retido < 0.5:
-                veredito = "MUDO: perde metade dos eventos"
-            elif media > orcamento:
-                veredito = "ESTOURA o orcamento"
-            else:
-                veredito = "opera"
-
-            print(
-                f"{formato.format(valor):>8}  {media:>8.2f} +- {st.pstdev(por_minuto):<7.2f}"
-                f"{st.mean(posses):>9.1f}{retido:>9.0%}  {veredito}"
-            )
-            sys.stdout.flush()
-        print()
+    for varredura in VARREDURAS:
+        _varre(varredura, plane, config, abandonos_base, orcamento)
 
     print("Isto mede degradacao da LOGICA sob ruido sintetico, com movimento humano")
     print("real por baixo. Nao mede percepcao, e nao substitui a gravacao encenada.")
