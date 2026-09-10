@@ -124,8 +124,8 @@ def estimate_metres_per_pixel(data_root: Path) -> float:
 
 
 def ground_plane(metres_per_pixel: float) -> GroundPlane:
-    """Homografia de escala pura. Sem perspectiva, sem correção de distorção."""
-    return GroundPlane(np.diag([metres_per_pixel, metres_per_pixel, 1.0]))
+    """Homografia de escala pura, para o CAVIAR, que não distribui calibração."""
+    return GroundPlane.uniform(metres_per_pixel)
 
 
 def _load_jpeg_bytes(archive: Path) -> dict[int, bytes]:

@@ -5,8 +5,10 @@ import pytest
 from custody_watch.calibration import (
     MAX_RESIDUAL_M,
     load_calibration,
+    plane_from,
     reprojection_residual,
 )
+from custody_watch.ground_plane import GroundPlane
 from custody_watch.types import Point
 
 QUADRADO = [
@@ -142,3 +144,49 @@ def test_calibracao_exata_reporta_pior_ponto_zero(tmp_path):
     calibracao = load_calibration(escrever(tmp_path))
 
     assert calibracao.worst_residual_m == pytest.approx(0.0, abs=1e-9)
+
+
+# --- de onde vem o plano do chão ----------------------------------------------
+
+
+def test_plano_uniforme_escala_os_dois_eixos():
+    plano = GroundPlane.uniform(0.05)
+
+    projetado = plano.project(100.0, 200.0)
+    assert projetado.x == pytest.approx(5.0)
+    assert projetado.y == pytest.approx(10.0)
+
+
+def test_sem_calibracao_e_sem_escala_recusa(tmp_path):
+    """Não há default silencioso. Um plano chutado faria todo limiar em metros
+    mentir sem sintoma, que é exatamente o que `calibration.py` existe para
+    impedir."""
+    with pytest.raises(ValueError, match="metres_per_pixel"):
+        plane_from(None, None)
+
+
+def test_calibracao_e_escala_juntas_recusam(tmp_path):
+    """Dar as duas é ambiguidade, e adivinhar qual vale seria escolher em
+    silêncio de onde vêm todas as distâncias da sessão."""
+    with pytest.raises(ValueError, match="uma das duas"):
+        plane_from(escrever(tmp_path), 0.05)
+
+
+def test_escala_explicita_produz_plano_uniforme():
+    plano = plane_from(None, 0.02)
+
+    assert plano.project(50.0, 50.0).x == pytest.approx(1.0)
+
+
+def test_calibracao_medida_vence_a_escala_uniforme(tmp_path):
+    """O caminho bom: quatro pontos medidos no chão, com resíduo conferido."""
+    plano = plane_from(escrever(tmp_path), None)
+
+    projetado = plano.project(50.0, 50.0)
+    assert projetado.x == pytest.approx(0.5, abs=1e-6)
+    assert projetado.y == pytest.approx(0.5, abs=1e-6)
+
+
+def test_escala_nao_positiva_e_recusada():
+    with pytest.raises(ValueError, match="positiva"):
+        plane_from(None, 0.0)

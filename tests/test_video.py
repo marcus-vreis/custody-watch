@@ -124,3 +124,49 @@ def test_integracao_le_video_real():
 
     assert primeiro.t >= 0.0
     assert primeiro.image.ndim == 3
+
+
+# --- quadros crus, sem detector -----------------------------------------------
+
+
+def _grava_video(destino, n=10, fps=25.0, largura=32, altura=24):
+    """Um vídeo minúsculo de verdade, para exercitar a leitura sem o dataset."""
+    import cv2
+    import numpy as np
+
+    escritor = cv2.VideoWriter(
+        str(destino), cv2.VideoWriter_fourcc(*"MJPG"), fps, (largura, altura)
+    )
+    for i in range(n):
+        quadro = np.full((altura, largura, 3), i * 10, dtype=np.uint8)
+        escritor.write(quadro)
+    escritor.release()
+    return destino
+
+
+def test_quadros_crus_devolvem_imagem_e_instante(tmp_path):
+    """O recorte de clipe precisa da imagem, não de detecção nova: as caixas
+    vêm da passagem que a sessão já fez. Rodar o detector outra vez custaria o
+    dobro para produzir exatamente as mesmas caixas."""
+    from custody_watch.video import raw_frames
+
+    caminho = _grava_video(tmp_path / "curto.avi", n=10, fps=25.0)
+
+    lidos = list(raw_frames(caminho))
+
+    assert len(lidos) == 10
+    assert lidos[0][0] == 0.0
+    assert lidos[4][0] == pytest.approx(4 / 25.0)
+    assert lidos[0][1].shape == (24, 32, 3)
+
+
+def test_quadros_crus_aceitam_fps_declarado(tmp_path):
+    """Um arquivo cujo fps o container não declara direito não pode inventar
+    a grade de tempo: quem chama passa o número que já leu."""
+    from custody_watch.video import raw_frames
+
+    caminho = _grava_video(tmp_path / "curto.avi", n=6, fps=25.0)
+
+    lidos = list(raw_frames(caminho, fps=10.0))
+
+    assert lidos[2][0] == pytest.approx(0.2)
