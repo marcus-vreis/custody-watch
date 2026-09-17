@@ -15,6 +15,7 @@ contexto induziria a achar que o sistema encontrou alguma coisa.
 from __future__ import annotations
 
 import sys
+from functools import partial
 from pathlib import Path
 
 from custody_watch.caviar import (
@@ -24,9 +25,9 @@ from custody_watch.caviar import (
     load_clip,
     load_frames,
 )
-from custody_watch.clips import ClipRequest, render_clip
-from custody_watch.orchestrator import SessionResult, run_session
-from custody_watch.report import ReviewItem, SessionReport, write_report
+from custody_watch.orchestrator import run_session
+from custody_watch.report import SessionReport, write_report
+from custody_watch.review import review_items
 
 RAIZ = Path(__file__).resolve().parent.parent
 DATA = RAIZ / "data" / "caviar"
@@ -38,51 +39,6 @@ AVISO = (
     "no meio. Todo item abaixo é, por construção, um alarme falso — é exatamente "
     "isso que a página serve para medir."
 )
-
-
-def _bag_bruto(resultado: SessionResult) -> int | None:
-    """Id da bagagem citada nos eventos, para destacar no clipe."""
-    for evento in resultado.events:
-        if evento.bag is not None:
-            return evento.bag
-    return None
-
-
-def _itens(resultado: SessionResult, cenario: str) -> list[ReviewItem]:
-    bag = _bag_bruto(resultado)
-    # `bag` é o bag_id canônico, mas os frames podem trazer um track diferente
-    # depois de uma readoção sob oclusão (Finding 5) -- `raw_bag_ids` traz
-    # todo track que já respondeu por ele, para o clipe destacar a caixa
-    # certa qualquer que seja o id vigente na janela recortada.
-    bag_ids = frozenset(resultado.raw_bag_ids(bag)) if bag is not None else frozenset()
-    itens: list[ReviewItem] = []
-
-    for posicao, alerta in enumerate(resultado.queue, start=1):
-        destino = SAIDA / "clipes" / f"{cenario}_{alerta.person}.gif"
-        caminho = render_clip(
-            load_frames(DATA, cenario),
-            ClipRequest(
-                start_s=alerta.clip_start,
-                end_s=alerta.clip_end,
-                person_ids=frozenset(resultado.raw_ids(alerta.person)),
-                bag_ids=bag_ids,
-                output=destino,
-            ),
-        )
-        itens.append(
-            ReviewItem(
-                rank=posicao,
-                person=alerta.person,
-                score=alerta.score,
-                level=alerta.top_level.name,
-                clip_start=alerta.clip_start,
-                clip_end=alerta.clip_end,
-                explanations=alerta.explanations,
-                clip_path=caminho,
-            )
-        )
-
-    return itens
 
 
 def main() -> int:
@@ -100,7 +56,8 @@ def main() -> int:
         for evento in resultado.events:
             contagem[evento.kind.value] = contagem.get(evento.kind.value, 0) + 1
 
-        itens = _itens(resultado, cenario)
+        quadros = partial(load_frames, DATA, cenario)
+        itens = review_items(resultado, quadros, SAIDA, cenario)
         print(f"{cenario:<22} {len(itens)} item(ns) na fila")
 
         sessoes.append(

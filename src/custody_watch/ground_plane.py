@@ -45,6 +45,17 @@ class GroundPlane:
             raise ValueError("cv2.findHomography falhou — pontos podem ser colineares")
         return cls(h)
 
+    @classmethod
+    def uniform(cls, metres_per_pixel: float) -> GroundPlane:
+        """Homografia de escala pura: sem perspectiva, sem correção de lente.
+
+        É o plano de quem não tem calibração medida. Serve, e mente um pouco
+        mais quanto mais fundo na cena — no CAVIAR o erro fica em torno de 30%.
+        """
+        if metres_per_pixel <= 0.0:
+            raise ValueError(f"escala deve ser positiva, recebida {metres_per_pixel}")
+        return cls(np.diag([metres_per_pixel, metres_per_pixel, 1.0]))
+
     def project(self, px: float, py: float) -> Point:
         vector = self._h @ np.array([px, py, 1.0])
         if abs(vector[2]) < 1e-9:

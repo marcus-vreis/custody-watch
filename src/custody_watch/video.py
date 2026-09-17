@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 
 from .detectors.base import RELEVANT_CLASSES
@@ -85,6 +86,34 @@ def parse_result(
         )
 
     return tracked
+
+
+def raw_frames(path: Path | str, fps: float | None = None) -> Iterator[tuple[float, np.ndarray]]:
+    """Quadros crus, sem detector.
+
+    O recorte de clipe precisa da **imagem**, não de detecção nova: as caixas
+    vêm da passagem que a sessão já fez. Rodar o detector uma segunda vez
+    custaria o dobro para produzir exatamente as mesmas caixas — e guardar
+    todo quadro decodificado em memória custaria dezenas de gigabytes num
+    vídeo de minutos.
+
+    `fps` existe para o chamador passar o número que já leu, em vez de o
+    arquivo ser aberto duas vezes só para descobri-lo.
+    """
+    path = Path(path)
+    taxa = fps if fps is not None else video_fps(path)
+
+    captura = cv2.VideoCapture(str(path))
+    try:
+        indice = 0
+        while True:
+            ok, imagem = captura.read()
+            if not ok:
+                return
+            yield indice / taxa, imagem
+            indice += 1
+    finally:
+        captura.release()
 
 
 class VideoSource:

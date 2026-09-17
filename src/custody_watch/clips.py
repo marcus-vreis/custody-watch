@@ -25,6 +25,15 @@ A taxa de saída e a paleta são reduzidas de propósito. O operador precisa ver
 aconteceu, não cada quadro: vinte segundos a 25 fps são quinhentos quadros, e a
 2 fps com 32 cores o clipe cai de 21 MB para 1,7 MB, que é o que permite
 várias revisões na mesma página.
+
+## Por que existe um teto de largura
+
+Aquele 1,7 MB foi medido a 384x288. O custo de um GIF é por pixel, então o
+mesmo recorte a 1280x720 custa oito vezes mais: medido no primeiro vídeo real,
+treze itens fizeram uma página de 142 MB, alto demais para abrir e muito além
+do teto de 16 MB de um artifact. O teto reduz o quadro antes de desenhar, e a
+caixa destacada acompanha — uma pessoa de 290px no quadro original ainda tem
+109px, que é de sobra para reconhecer o que aconteceu.
 """
 
 from __future__ import annotations
@@ -41,6 +50,9 @@ from .tracking import TrackedDetection
 DEFAULT_OUTPUT_FPS = 2.0
 DEFAULT_SCALE = 1
 DEFAULT_COLORS = 32
+DEFAULT_MAX_WIDTH = 480
+"""Largura máxima do clipe, em pixels. Material do tamanho do CAVIAR passa
+intacto; um quadro de câmera de verdade é reduzido antes de desenhar."""
 COR_SUSPEITO = (255, 64, 64)
 COR_BAGAGEM = (255, 196, 0)
 COR_NEUTRA = (120, 200, 255)
@@ -60,18 +72,34 @@ class ClipRequest:
     output: Path
 
 
+def _fator(largura: int, escala: int, max_width: int) -> float:
+    """Quanto o quadro muda de tamanho. O teto vence a ampliação.
+
+    `escala` existe para material pequeno demais para se enxergar; o teto,
+    para material grande demais para caber na página. Um só fator porque a
+    caixa destacada precisa acompanhar o quadro, e dois números aqui seriam
+    duas chances de ela ficar para trás.
+    """
+    if largura * escala <= max_width:
+        return float(escala)
+    return max_width / largura
+
+
 def _desenhar(
     imagem: Image.Image,
     boxes: Iterable[TrackedDetection],
     person_ids: frozenset[int],
     bag_ids: frozenset[int],
-    escala: int,
+    fator: float,
 ) -> Image.Image:
-    tela = imagem.resize((imagem.width * escala, imagem.height * escala), Image.NEAREST)
+    # NEAREST ampliando mantém o pixel nítido; reduzindo, ele joga linha fora,
+    # e uma bagagem estreita pode simplesmente sumir do clipe.
+    filtro = Image.NEAREST if fator >= 1.0 else Image.LANCZOS
+    tela = imagem.resize((round(imagem.width * fator), round(imagem.height * fator)), filtro)
     caneta = ImageDraw.Draw(tela)
 
     for box in boxes:
-        x0, y0, x1, y1 = (v * escala for v in box.bbox)
+        x0, y0, x1, y1 = (v * fator for v in box.bbox)
 
         if box.track_id in person_ids:
             cor, rotulo, espessura = COR_SUSPEITO, "pessoa sinalizada", 3
@@ -93,6 +121,7 @@ def render_clip(
     output_fps: float = DEFAULT_OUTPUT_FPS,
     scale: int = DEFAULT_SCALE,
     colors: int = DEFAULT_COLORS,
+    max_width: int = DEFAULT_MAX_WIDTH,
 ) -> Path | None:
     """Recorta a janela pedida e grava um GIF anotado.
 
@@ -117,7 +146,8 @@ def render_clip(
 
         proximo = t + passo
         rgb = Image.fromarray(imagem[:, :, ::-1])
-        recortados.append(_desenhar(rgb, boxes, request.person_ids, request.bag_ids, scale))
+        fator = _fator(rgb.width, scale, max_width)
+        recortados.append(_desenhar(rgb, boxes, request.person_ids, request.bag_ids, fator))
 
     if not recortados:
         return None

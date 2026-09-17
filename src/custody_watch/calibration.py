@@ -67,7 +67,17 @@ def reprojection_residual(
 
 
 def load_calibration(path: Path | str) -> Calibration:
-    path = Path(path)
+    # O caminho vem da linha de comando. Resolver antes de abrir tira o
+    # relativo e o `..` do meio, e a checagem de arquivo comum transforma
+    # "apontei para a pasta errada" numa frase em vez de um traceback de IO
+    # saindo de dentro de uma função que promete validar a medição do chão.
+    path = Path(path).resolve()
+    if not path.is_file():
+        raise ValueError(
+            f"{path}: arquivo de calibração não encontrado. Esperado um JSON "
+            f"com 'camera', 'note' e ao menos 4 correspondências medidas no chão"
+        )
+
     data = json.loads(path.read_text(encoding="utf-8"))
 
     camera = str(data.get("camera", "")).strip()
@@ -105,3 +115,31 @@ def load_calibration(path: Path | str) -> Calibration:
     return Calibration(
         camera=camera, note=note, plane=plane, residual_m=media, worst_residual_m=pior
     )
+
+
+def plane_from(calibration: Path | str | None, metres_per_pixel: float | None) -> GroundPlane:
+    """O plano do chão, da fonte que o chamador escolheu — e só de uma delas.
+
+    Não existe default silencioso. Todo limiar deste sistema é em metros, e um
+    plano chutado faz todos eles mentirem sem sintoma nenhum: nada quebra, os
+    números só passam a descrever outra cena. Quem roda decide de onde vem a
+    escala, e a decisão fica no comando.
+
+    Dar as duas também é erro. Adivinhar qual vale seria escolher em silêncio
+    a origem de toda distância da sessão.
+    """
+    if calibration is not None and metres_per_pixel is not None:
+        raise ValueError("passe apenas uma das duas: calibração medida ou escala uniforme")
+
+    if calibration is not None:
+        return load_calibration(calibration).plane
+
+    if metres_per_pixel is None:
+        raise ValueError(
+            "sem plano do chão: passe uma calibração medida, ou "
+            "metres_per_pixel para usar escala uniforme. Para estimar a escala, "
+            "meça em pixels a altura de uma pessoa no quadro e divida 1.70 por "
+            "ela — uma pessoa com 200px dá cerca de 0.0085"
+        )
+
+    return GroundPlane.uniform(metres_per_pixel)
