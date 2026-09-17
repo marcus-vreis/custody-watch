@@ -95,6 +95,15 @@ class Bag:
     state: BagState = BagState.NOVA
     owner_party: int | None = None  # None => órfã
     last_seen: float = 0.0
+    anchored_at: float = 0.0
+    """Instante em que a bagagem virou âncora, e não em que foi vista.
+
+    Uma bagagem só entra no registro depois de ficar parada, e é deste
+    instante que corre a janela de atribuição de posse. Medir a janela a
+    partir da primeira detecção daria ao estranho que se aproxima o mesmo
+    direito do dono, porque uma mala em trânsito pode ser vista muito antes
+    de ser depositada.
+    """
     unattended_since: float | None = None
     occluded_since: float | None = None
     """Instante em que o detector deixou de ver a bagagem. `None` => visível.

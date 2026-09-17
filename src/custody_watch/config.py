@@ -49,12 +49,15 @@ class CustodyConfig:
     unattended_time_s: float = 25.0
     max_occlusion_s: float = 30.0
     carry_confirm_s: float = 1.0
+    rest_confirm_s: float = 2.0
+    ownership_window_s: float = 10.0
 
 
 @dataclass(frozen=True)
 class RegistryConfig:
     moved_threshold_m: float = 0.5
     ambiguity_radius_m: float = 1.0
+    reidentification_radius_m: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -168,6 +171,33 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         "estiver por perto — é o defeito que este projeto fechou na porta do "
         "desaparecimento e reabriria na do movimento; acima de 10s o ladrão "
         "sai de quadro antes de o evento existir",
+    ),
+    "custody.rest_confirm_s": Bounds(
+        0.5,
+        30.0,
+        "abaixo de 0.5s a bagagem 'para' entre dois passos de quem a puxa, e "
+        "trânsito vira depósito: o viajante que entra em quadro com a própria "
+        "mala ganha uma custódia que nunca existiu, e perdê-la é acusá-lo; "
+        "acima de 30s um depósito real leva meio minuto para entrar no "
+        "registro, e o furto por abandono termina antes disso",
+    ),
+    "custody.ownership_window_s": Bounds(
+        1.0,
+        60.0,
+        "acima de 60s um estranho que se aproxima de uma bagagem sem dono vira "
+        "dono legítimo por proximidade -- é o ataque que a regra P1 fecha, e a "
+        "janela é o que impede a retentativa de posse de reabri-lo; abaixo de "
+        "1s a retentativa não cobre nem uma rajada de falha do detector, que é "
+        "o defeito que ela existe para consertar",
+    ),
+    "registry.reidentification_radius_m": Bounds(
+        0.3,
+        3.0,
+        "abaixo de 0.3m a bagagem que volta empurrada por quem passou não é "
+        "readotada e se registra como bagagem nova, enquanto a original segue "
+        "ocluída -- duas entradas para uma bagagem física, e a identidade que "
+        "a readoção existe para preservar se perde; acima de 3m duas bagagens "
+        "distintas no mesmo balcão viram a mesma",
     ),
     "registry.moved_threshold_m": Bounds(
         0.2,

@@ -88,6 +88,7 @@ class BagRegistry:
                 bag_id=observation.track_id,
                 anchor=observation.position,
                 last_seen=observation.t,
+                anchored_at=observation.t,
             )
             self._bags[bag.bag_id] = bag
 

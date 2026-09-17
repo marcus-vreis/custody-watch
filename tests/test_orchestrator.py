@@ -52,7 +52,12 @@ def test_ninguem_ganha_grupo_so_por_aparecer():
 
 
 def test_grupo_nasce_quando_alguem_precisa_ter_posse():
-    resultado = run_session(cena([pessoa(1, 0.0)], [pessoa(1, 0.0), mala(9, 0.5)]), PLANO, RAPIDO)
+    """A bagagem precisa ficar parada antes de virar âncora, então o cenário
+    tem os quadros do depósito -- sem eles não há posse de que o grupo possa
+    nascer."""
+    quadros = [[pessoa(1, 0.0)]] + [[pessoa(1, 0.0), mala(9, 0.5)]] * 4
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
 
     assert len(resultado.events.of_kind(EventKind.PARTY_FORMED)) == 1
     assert len(resultado.events.of_kind(EventKind.BAG_OWNED)) == 1
@@ -116,7 +121,7 @@ def test_estranho_recolhe_a_mala_do_casal_e_alerta():
 
 
 def test_contato_com_bagagem_alheia_gera_flag_n2():
-    quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 2
+    quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 4
     quadros += [[pessoa(1, 0.0), pessoa(7, 0.3), mala(9, 0.3)]] * 2
 
     resultado = run_session(cena(*quadros), PLANO, RAPIDO)
@@ -128,7 +133,7 @@ def test_contato_com_bagagem_alheia_gera_flag_n2():
 
 def test_contato_e_flagrado_uma_vez_so():
     """Sem deduplicação, ficar ao lado da mala geraria um flag por frame."""
-    quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 2
+    quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 4
     quadros += [[pessoa(1, 0.0), pessoa(7, 0.3), mala(9, 0.3)]] * 30
 
     resultado = run_session(cena(*quadros), PLANO, RAPIDO)
@@ -216,3 +221,96 @@ def test_resultado_reporta_frames_e_duracao():
 
     assert resultado.frames == 3
     assert resultado.duration_s == 2.0
+
+
+# --- posse é o depósito (#35) -------------------------------------------------
+
+
+def mochila(track_id: int, x: float) -> TrackedDetection:
+    return TrackedDetection(track_id=track_id, cls="backpack", bbox=(x - 0.2, 0.0, x + 0.2, 0.4))
+
+
+def test_bagagem_em_transito_nao_entra_no_registro():
+    """O registro é de âncoras, e bagagem que nunca parou nunca foi âncora.
+
+    Medido no primeiro vídeo real: o dono foi acusado de furtar a própria mala
+    aos 2s e terminou em 1º na fila. A mala nasceu órfã -- ninguém estava
+    detectado no único quadro em que ela se registrou -- e bagagem órfã que se
+    move resolvia como retirada por estranho. Todo viajante que entra em
+    quadro puxando mala é esse caso.
+    """
+    quadros = [[pessoa(1, 2.0 * i), mala(9, 2.0 * i + 0.3)] for i in range(6)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []
+    assert resultado.events.of_kind(EventKind.BAG_REMOVED_BY_STRANGER) == []
+    assert [item for item in resultado.queue if item.top_level is FlagLevel.N3] == []
+
+
+def test_mochila_nas_costas_de_quem_anda_nao_vira_bagagem():
+    """Mesma regra, e é o ruído dominante em material real: 20 registros de
+    bagagem para cerca de 3 malas de verdade, porque toda mochila e bolsa em
+    movimento abria uma âncora."""
+    quadros = [[pessoa(1, 2.0 * i), mochila(9, 2.0 * i)] for i in range(6)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []
+
+
+def test_bagagem_parada_entra_no_registro_com_quem_a_depositou():
+    """O caminho bom: a mala para, vira âncora, e a posse é de quem estava
+    junto no depósito."""
+    quadros = [[pessoa(1, 0.5), mala(9, 0.0)] for _ in range(4)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert len(resultado.events.of_kind(EventKind.BAG_APPEARED)) == 1
+    assert len(resultado.events.of_kind(EventKind.BAG_OWNED)) == 1
+
+
+def test_posse_sobrevive_ao_dono_sumir_no_quadro_do_deposito():
+    """#35 medido: 5% de falha de detecção de pessoa custavam 40% das posses,
+    porque a posse dependia de o dono estar detectado num único quadro. A
+    rajada medida no CAVIAR tem 12 quadros, então a chance de ele estar
+    invisível naquele instante exato era de ~39%.
+
+    Enquanto a bagagem for órfã a pergunta continua aberta, e a janela é o que
+    a mantém aberta sem reabrir o ataque da P1.
+    """
+    quadros = [[mala(9, 0.0)] for _ in range(3)]
+    quadros += [[pessoa(1, 0.5), mala(9, 0.0)] for _ in range(2)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert len(resultado.events.of_kind(EventKind.BAG_OWNED)) == 1
+
+
+def test_estranho_que_chega_depois_da_janela_nao_vira_dono():
+    """A retentativa não pode reabrir o ataque que a regra P1 fecha: quem se
+    aproxima de uma bagagem sem dono não herda a posse dela por ficar por
+    perto. Depois da janela, a bagagem segue órfã e levá-la é retirada."""
+    quadros = [[mala(9, 0.0)] for _ in range(14)]
+    quadros += [[pessoa(7, 0.5), mala(9, 0.0)] for _ in range(3)]
+    quadros += [[pessoa(7, 2.0 * i + 0.3), mala(9, 2.0 * i)] for i in range(1, 4)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_OWNED) == []
+    assert len(resultado.events.of_kind(EventKind.BAG_REMOVED_BY_STRANGER)) == 1
+
+
+def test_bagagem_que_volta_um_pouco_fora_da_ancora_e_readotada():
+    """#29: o raio de readoção era o mesmo número que decide 'a bagagem se
+    moveu'. Uma bagagem que reaparecia a 0,6m da âncora não era readotada e se
+    registrava como bagagem nova, enquanto a original seguia ocluída rumo ao
+    timeout -- duas entradas de registro para uma bagagem física."""
+    quadros = [[mala(9, 0.0)] for _ in range(4)]
+    quadros += [[] for _ in range(6)]
+    quadros += [[mala(10, 0.6)] for _ in range(4)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert len(resultado.events.of_kind(EventKind.BAG_APPEARED)) == 1
+    assert len(resultado.events.of_kind(EventKind.TRACK_RELINKED)) == 1
