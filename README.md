@@ -2,11 +2,11 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end. 335 tests, CI green. The pipeline consumes video, tracks who owns which bag, and produces a ranked review page for a human operator.
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. 385 tests, CI green.
 >
-> **It has never seen a real theft.** No public dataset with one is still online — see [Evaluation](#evaluation).
+> **It has now seen a theft, and found it.** Not a real one — a 40-second gate-area distraction theft generated with Veo. The system named the thief, the right bag and the right owner group, about two seconds after the bag started moving. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
-> **And on the only footage available, the detector cannot see the bags at all:** 1 hit in 1,686 annotated suitcases. Everything the logic layer does well, it does on ground-truth boxes. See [Perception](#perception-the-half-that-was-never-measured).
+> **It has still never seen a real theft.** No public dataset with one is still online — see [Evaluation](#evaluation).
 
 ## What this is
 
@@ -54,6 +54,17 @@ uv sync --extra dev
 uv run pre-commit install --install-hooks
 ```
 
+Run it on a video file. This is the path where both halves run — detector and logic — and the only one that produces a review page from something other than annotation:
+
+```bash
+uv run python scripts/watch_video.py scene.mp4 --calibration ground.json
+uv run python scripts/watch_video.py scene.mp4 --metres-per-pixel 0.0085
+```
+
+**There is no silent default for the ground plane.** One of the two is required: a measured calibration, refused above 25 cm of residual *on its worst point*, or an explicit scale. Every threshold in this system is in metres, and a guessed plane makes all of them lie without a symptom — nothing breaks, the numbers just start describing a different scene.
+
+A uniform scale now says when it cannot describe the scene. If the people in frame differ in height by more than 2×, the view has perspective, the background is compressed past every distance threshold, and the run warns with the measured ratio. Both scenes this project has seen fail that test: CAVIAR at 3.3×, the gate clip at 11.3×.
+
 Fetch the dataset (~192 MB) and measure:
 
 ```bash
@@ -78,6 +89,12 @@ uv run python scripts/evaluate.py
 
 ```bash
 uv run python scripts/evaluate.py --config config/caviar.json
+```
+
+Sweep how good perception has to be, one noise axis at a time:
+
+```bash
+uv run python scripts/envelope.py
 ```
 
 Build the operator's review page, with annotated clips:
@@ -107,6 +124,8 @@ uv run python scripts/build_report.py
 | `orchestrator.py` | Wires it together; consumes frames, emits a queue |
 | `clips.py` | Annotated GIF cut around the gravest signal |
 | `report.py` | The operator's review page |
+| `review.py` | Queue, clip and page composed — including the identity translation between them |
+| `noise.py` | Detector noise model: drop bursts, position error, ID switches |
 | `metrics.py` | P_miss @ RFA |
 | `annotations.py` | Ground truth as events, and asymmetric matching against what was emitted |
 | `caviar.py` | Dataset reader |
@@ -123,9 +142,11 @@ Every decision emits an event carrying the numbers that produced it. A session r
 
 This is why thresholds live in `config.py` behind declared safe ranges: making them tunable reopens every attack three rounds of adversarial review closed, so a value outside its range is rejected with the reason it exists.
 
-## Perception: the half that was never measured
+## Perception: measured, and not where we thought
 
-`YoloDetector` existed, was tested against a fake, and had never once been instantiated. Every result this project produced came from ground-truth boxes. Running it changed what the project thinks it is:
+`YoloDetector` existed, was tested against a fake, and had never once been instantiated. Every result this project produced came from ground-truth boxes. Running it changed what the project thinks it is — twice.
+
+### On CAVIAR, at 384×288
 
 ```
              annotated   found   recall
@@ -148,9 +169,68 @@ Luggage sits between 9 and 22 px and returns 0% in three of the four clips.
 
 That confirms by measurement a requirement that had only been derived geometrically: a 55 cm suitcase needs about 40 px, which works out to 73 px/m. Measured, 39 px gives 64% and anything under 33 px falls below 26%. Two independent routes, same number.
 
-The consequence is blunt: **on this data, perception dominates everything downstream, and none of the numbers below say anything about whether the system can see.**
+On this data, perception dominates everything downstream, and none of the numbers below say anything about whether the system can see.
 
-That is not the same as "the logic half is fine" — it had four serious defects, and this dataset could not have shown any of them. See [Defects no dataset could expose](#defects-no-dataset-could-expose).
+### At 720p, the same weights
+
+On the 40-second gate clip, the same weights file finds the suitcase in **1,223 frames** with a median box height of **166 px**, and holds it through two ID switches while it is being carried away.
+
+The 0.1% is a property of a 2004 dataset at 384×288, not of the detector. Which means the sentence this README led with — *the detector cannot see luggage* — was true about the material and false about the tool.
+
+### Which axis actually breaks the logic
+
+"How good does perception have to be" is not answered by measuring the detector. It is answered by degrading the input and watching the logic fail, one axis at a time, with the other axis clean — the measured person noise alone destroys the pipeline, so sweeping both at once measures nothing.
+
+The column that decides is **retained**: how many of the true events of a clean run survive. Under noise the system does not cry wolf, it **goes mute**, and a false-alarm rate of zero produced by silence reads exactly like success.
+
+| person detections lost | ownerships (of 4) | events retained | |
+|---|---|---|---|
+| 0% – 40% | 4.0 | **100%** | operates |
+| 80% | 0.8 | 17% | mute |
+
+| bag detections lost | ownerships | events retained | |
+|---|---|---|---|
+| 0% – 20% | 4.0 | 92 – 100% | operates |
+| 40% | 4.0 | 75% | operates |
+| 80% | 1.8 | 25% | mute |
+
+Position error is survivable to 8 px on either axis: 96% retained for people, 79% for bags.
+
+**Both halves of perception now break in the same place** — around 40% of detections lost, or 8 px of position error. That symmetry is new. The version of this system that this README described before broke at **5% of person detections lost**, losing 40% of ownership with it, because ownership hung on the single frame in which a bag was first seen.
+
+The bag axis was more robust then and is slightly less so now: a bag has to be *seen* settling before it becomes an anchor, so a dropped frame costs a sample. Going from 96% to 75% retained at 40% bag loss is what buys not being mute at 4 px of bag position error — and position error is the one the measurement says is likely, because the bag error has never been measured at all. One paired detection in 1,686 is not a sample.
+
+That is not the same as "the logic half is fine" — it had four serious defects that no dataset could have shown, and a fifth that only a full-length scene could. See [Defects no dataset could expose](#defects-no-dataset-could-expose).
+
+## The first footage that is not a dataset
+
+Forty seconds of a boarding gate, generated with Veo: a couple arrives with a suitcase, stops, looks at their phones. A man in black enters from the right and walks off with the bag while they keep looking down.
+
+It is not real footage, and it is not evidence about real thefts. It is the first time both halves of this system ran together on something nobody annotated by hand.
+
+**The first run put the owner at the top of the queue,** accused of stealing his own suitcase two seconds after walking into frame, with a random traveller second and the thief eighth. Every traveller who enters pulling a bag was that case — in an airport, nearly everyone.
+
+The cause was one line. Ownership was decided in the single frame where a bag first appeared; people only exist for the logic after their re-ID settles; so the bag was born orphan, and an orphan bag that moves resolves as removal by a stranger.
+
+The fix changed what the registry *is*. It is now **a registry of anchors**: a bag enters only after it has stayed put, because rule P2 says position is identity *precisely because a stationary bag does not teleport*, and a bag in transit has no such property. And ownership is now **the deposit** — whoever was within reach when the bag arrived at the place where it came to rest.
+
+| | before | after |
+|---|---|---|
+| `bag_appeared` | 20 | **6** |
+| `bag_ambiguous` | 3 | **0** |
+| the owner | **1st in the queue, N3** | not in the queue at all |
+| the thief | 8th, N2 "touched a bag" | **N3, named, with the right bag and the right owner group** |
+| review page | 142 MB | 22.6 MB |
+
+The theft comes out as one line of log:
+
+```
+34.67  bag_removed_by_stranger  bag=12  subj=533  party=2
+```
+
+Two seconds after the bag started moving, across two tracker ID switches that anchor re-adoption recovered at 2 cm and 35 cm.
+
+**What it does not prove.** One staged clip is one sample, and a generated one: no real sensor noise, no compression artefacts, no crowd. The false alarms that remain in that run are all bags in the *background*, which a uniform scale reads as standing still — a calibration failure, not a logic one, and the reason the tool now refuses to stay quiet about it. The theft survives a 5× range of scale error. The noise does not.
 
 ## Evaluation
 
@@ -199,19 +279,21 @@ At 10 s, a threshold CAVIAR can express:
 
 ```
 clipe                  anotados  medivel  curto  incerto  acertos  perdidos  espurios   atraso
-LeftBag                       1        1      0        0        1         0         0   +10.0s
-LeftBag_AtChair               1        1      0        0        1         0         0    +9.8s
-LeftBag_PickedUp              1        1      0        0        1         0         1   +10.0s
+LeftBag                       1        1      0        0        1         0         0   +10.6s
+LeftBag_AtChair               1        1      0        0        1         0         0   +10.0s
+LeftBag_PickedUp              1        1      0        0        1         0         0   +10.0s
 LeftBox                       1        0      0        1        0         0         0
 
-P_miss @ RFA 0.5/min : 0.00      positivos medidos: 3
+P_miss @ RFA 0.5/min : 0.00      positivos medidos: 3      falsos alarmes: 0
 ```
 
 (Tooling speaks Portuguese; the README does not. `medivel` / `curto` / `incerto` are the three verdicts on an annotated positive — measurable, too short to be an instance at this threshold, or cut off before it could be judged. That third one is the one that matters: without it, "we cannot tell" is silently counted as "the system missed it", which is the easiest way to manufacture a bad `P_miss` out of short material.)
 
 Three positives carry a confidence interval of roughly ±40 pp, so `0.00` is not a claim about the system. What it proves is that the harness runs end to end on real annotation.
 
-The lag column earns its own note: **+10.0, +9.8, +10.0 — exactly the threshold in use**, because the event fires when the state *completes* its duration. A symmetric ±2 s matching window would mark all three as missed *and* spurious at once, producing `P_miss = 1.0` with no relation to the system. That was an argument in the spec; now it is a measurement.
+The lag column earns its own note: **+10.0 and +10.6 — the threshold in use, plus the time it takes to confirm the bag is at rest**, because the event fires when the state *completes* its duration. A symmetric ±2 s matching window would mark all three as missed *and* spurious at once, producing `P_miss = 1.0` with no relation to the system. That was an argument in the spec; now it is a measurement.
+
+`LeftBag` is the one that carries the extra 0.6 s: it is the only clip where the bag is *placed* on camera rather than already sitting there, so the two seconds the registry spends confirming it is at rest land inside the measured lag. The spurious column is empty for the first time — the one entry it used to carry was a bag that had left the scene with its owner being reported as unattended, which is now suppressed as uncertainty rather than counted as evidence.
 
 ### Defects no dataset could expose
 
@@ -219,9 +301,17 @@ The logic half was carrying four chained defects that CAVIAR cannot show, becaus
 
 A passer-by occluding a bag for 0.2 s produced a top-severity theft accusation against them; the bag then died, erasing the genuine abandonment; and a theft committed in plain sight emitted nothing at all, because removal was only ever detected by *disappearance*. The ranked queue — the system's entire output — listed the innocent bystander and never mentioned the thief.
 
-All four were found by a twelve-line synthetic scenario run against `run_session`, and are fixed. But the fix is verified by synthetic trajectories: they prove the logic decides correctly, not that perception sees.
+All four were found by a twelve-line synthetic scenario run against `run_session`, and are fixed.
 
-**Closing the gap needs staged footage with real thefts in it.** That is the blocker, and it is not a code problem.
+### And a fifth that only a full-length scene could
+
+The four above are about what happens *around* a bag that is already established. The fifth was about how a bag becomes established at all, and neither a synthetic scenario nor an annotated dataset could show it, because both hand the system a bag that is simply there.
+
+Ownership was decided in the single frame where a bag first appeared. The noise sweep found the size of it — **5% person detection failure cost 40% of ownership**, because a 12-frame failure burst means the owner is absent in 39% of frames and that one frame of decision is a coin toss. The generated clip then showed what it costs at the other end: with no owner, an orphan bag that moves is a removal by a stranger, so the man who walked in pulling his own suitcase was the top of the queue.
+
+Both ends come from the same assumption, and fixing it meant stating what the registry is for: **it holds anchors, and ownership is the deposit.** A bag enters after it stays put; whoever was within reach when it arrived owns it. Chasing the owner afterwards would have reopened the attack rule P1 exists to close — a thief who walks up to an unclaimed bag becoming its legitimate owner — so the window that lets the system keep asking is bounded, and the answer it keeps is the one from the moment the bag arrived.
+
+**Closing the gap still needs staged footage with real thefts in it.** One generated clip is one sample, with none of a real sensor's noise. That is the blocker, and it is not a code problem.
 
 One requirement for that footage came out of the measurement, and would not have been guessed: the camera has to keep rolling for `max_occlusion_s` **after the bag leaves frame** — 30 s by default — and not merely for `unattended_time_s` after the abandonment. A scene that ends when the bag does produces an unresolvable event rather than a measurable one.
 
