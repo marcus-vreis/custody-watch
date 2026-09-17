@@ -93,7 +93,8 @@ def test_mark_ambiguous_neighbours_emite_um_evento_com_vizinhos_e_raio():
     event = ambiguous[0]
     assert event.t_start == 7.0
     assert event.bag == 1
-    assert set(event.evidence["neighbours"]) == set(affected) == {1, 2}
+    assert set(event.evidence["neighbour_bags"]) == set(affected) == {1, 2}
+    assert event.evidence["candidate_people"] == []
     assert event.evidence["radius_m"] == registry._config.ambiguity_radius_m
 
 

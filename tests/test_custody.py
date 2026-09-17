@@ -182,3 +182,34 @@ def test_config_altera_o_tempo_de_desacompanhamento():
     update_attendance(bag, [person(1, 10.0, 0.0, t=11.0)], manager, t=11.0, config=rapido)
 
     assert bag.state is BagState.DESACOMPANHADA
+
+
+def test_dono_fora_de_quadro_com_bagagem_invisivel_nao_desacompanha():
+    """#27: `distance_m: None` significa que nenhum membro do grupo dono está
+    no quadro. Com a bagagem invisível ao mesmo tempo, não se sabe nada -- ela
+    pode ter saído de cena com ele, que é exatamente o caso medido no CAVIAR.
+    A regra P3 diz que incerteza suprime e nunca gera."""
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    bag = owned_bag(party.party_id)
+    bag.occluded_since = 0.0
+
+    update_attendance(bag, [], manager, t=0.0)
+    update_attendance(bag, [], manager, t=30.0)
+
+    assert bag.state is not BagState.DESACOMPANHADA
+
+
+def test_dono_fora_de_quadro_com_bagagem_visivel_desacompanha():
+    """O espelho, e é ele que impede o conserto de fechar a porta certa pelo
+    motivo errado: num aeroporto o dono sair do campo da câmera é exatamente o
+    que acontece num furto por abandono. Com a bagagem à vista, a ausência
+    dele é evidência de verdade."""
+    manager = PartyManager()
+    party = manager.form_on_arrival([1])
+    bag = owned_bag(party.party_id)
+
+    update_attendance(bag, [], manager, t=0.0)
+    update_attendance(bag, [], manager, t=30.0)
+
+    assert bag.state is BagState.DESACOMPANHADA
