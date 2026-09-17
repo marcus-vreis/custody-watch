@@ -4,7 +4,9 @@ import pytest
 
 from custody_watch.calibration import (
     MAX_RESIDUAL_M,
+    MAX_UNIFORM_SCALE_RATIO,
     load_calibration,
+    perspective_ratio,
     plane_from,
     reprojection_residual,
 )
@@ -207,3 +209,28 @@ def test_calibracao_medida_vence_a_escala_uniforme(tmp_path):
 def test_escala_nao_positiva_e_recusada():
     with pytest.raises(ValueError, match="positiva"):
         plane_from(None, 0.0)
+
+
+def test_razao_de_perspectiva_mede_o_espalhamento_de_altura():
+    """A mesma pessoa três vezes menor no fundo são três vezes de erro de
+    escala entre os dois planos — e uma escala uniforme não tem como estar
+    certa nos dois."""
+    assert perspective_ratio([100.0] * 10 + [300.0] * 10) == pytest.approx(3.0, abs=0.2)
+
+
+def test_razao_de_perspectiva_ignora_a_caixa_absurda():
+    """Uma caixa truncada na borda do quadro sequestraria máximo sobre mínimo,
+    e o aviso passaria a disparar por artefato de detector."""
+    assert perspective_ratio([100.0] * 100 + [4000.0]) < 2.0
+
+
+def test_razao_de_perspectiva_sem_amostra_nao_alarma():
+    """Sem pessoa detectada não há medida, e inventar uma faria o aviso
+    descrever o silêncio do detector."""
+    assert perspective_ratio([]) == 1.0
+
+
+def test_cena_de_camera_alta_e_uniforme_nao_alarma():
+    """Câmera bem no alto e apontada para baixo: todo mundo do mesmo tamanho é
+    exatamente a condição em que a escala uniforme vale."""
+    assert perspective_ratio([180.0, 190.0, 175.0, 200.0, 185.0] * 4) < MAX_UNIFORM_SCALE_RATIO

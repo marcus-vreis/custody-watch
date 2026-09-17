@@ -23,7 +23,7 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from custody_watch.calibration import plane_from
+from custody_watch.calibration import MAX_UNIFORM_SCALE_RATIO, perspective_ratio, plane_from
 from custody_watch.config import Config, load_config
 from custody_watch.orchestrator import run_session
 from custody_watch.report import SessionReport, write_report
@@ -57,6 +57,35 @@ def _para_o_clipe(video: Path, fps: float, caixas: dict[int, list[TrackedDetecti
     """
     for indice, (t, imagem) in enumerate(raw_frames(video, fps=fps)):
         yield t, imagem, caixas.get(indice, [])
+
+
+def _aviso_de_escala(caixas: dict[int, list[TrackedDetection]]) -> str | None:
+    """A cena é descritível por uma escala uniforme?
+
+    Pergunta que só faz sentido quando a escala veio de `--metres-per-pixel`:
+    uma homografia medida trata a perspectiva, que é para isso que ela existe.
+
+    Sem este aviso o erro é silencioso, que é o modo de falha que este projeto
+    mais teme em plano do chão -- nada quebra, os números só passam a
+    descrever outra cena.
+    """
+    alturas = [
+        caixa.bbox[3] - caixa.bbox[1]
+        for quadro in caixas.values()
+        for caixa in quadro
+        if caixa.cls == "person"
+    ]
+    razao = perspective_ratio(alturas)
+    if razao <= MAX_UNIFORM_SCALE_RATIO:
+        return None
+
+    return (
+        f"AVISO: a altura das pessoas varia {razao:.1f}x entre o fundo e o primeiro "
+        f"plano. Uma escala uniforme não descreve esta cena: no fundo, bagagem "
+        f"sendo puxada anda devagar demais em metros, passa no teste de repouso e "
+        f"vira âncora parada -- e de âncora falsa saem acusações. Meça quatro "
+        f"pontos no chão e use --calibration."
+    )
 
 
 def main() -> int:
@@ -128,6 +157,11 @@ def main() -> int:
     print(f"\n{resultado.frames} quadros, {resultado.duration_s:.1f}s")
     print(f"eventos : {contagem or 'nenhum'}")
     print(f"fila    : {len(resultado.queue)} item(ns)")
+
+    if args.metres_per_pixel is not None:
+        aviso = _aviso_de_escala(caixas)
+        if aviso:
+            print(f"\n{aviso}", file=sys.stderr)
 
     if not contagem:
         print(

@@ -32,6 +32,20 @@ from .types import Point
 
 MAX_RESIDUAL_M = 0.25
 
+MAX_UNIFORM_SCALE_RATIO = 2.0
+"""Acima disto a escala uniforme não descreve mais a cena.
+
+A razão entre a altura de uma pessoa no primeiro plano e no fundo **é** o
+fator de erro da escala entre os dois planos. Colocada no meio, uma escala
+uniforme erra pela raiz dessa razão para cada lado: a 2.0 já são 41% em cada
+direção, e nenhum limiar em metros sobrevive a isso sem dizer outra coisa do
+que promete.
+
+Medido: o CAVIAR dá 3.27, e o vídeo de portão de embarque dá 11.28. Nenhuma
+das duas cenas que este projeto já viu é descritível por escala uniforme, e é
+por isso que o aviso existe em vez de um número que finge funcionar.
+"""
+
 
 @dataclass(frozen=True)
 class Calibration:
@@ -64,6 +78,28 @@ def reprojection_residual(
     """Erro médio, em metros, entre o ponto medido e o reprojetado."""
     erros = reprojection_errors(plane, pixels, world)
     return sum(erros) / len(erros) if erros else 0.0
+
+
+def perspective_ratio(person_heights: Sequence[float]) -> float:
+    """Quanto a mesma pessoa muda de tamanho entre o fundo e o primeiro plano.
+
+    Pessoa é a régua disponível: altura humana varia pouco, então a variação
+    de altura em pixels dentro de um mesmo quadro é perspectiva, não gente
+    diferente.
+
+    p95 sobre p05, e não máximo sobre mínimo. Uma caixa truncada na borda do
+    quadro, ou duas pessoas fundidas numa detecção só, produz altura absurda e
+    sequestraria a razão inteira — o aviso passaria a descrever o detector.
+
+    Devolve 1.0 para amostra vazia: sem medida não há alerta a dar.
+    """
+    alturas = sorted(h for h in person_heights if h > 0.0)
+    if not alturas:
+        return 1.0
+
+    fundo = alturas[int(0.05 * len(alturas))]
+    frente = alturas[min(int(0.95 * len(alturas)), len(alturas) - 1)]
+    return frente / fundo if fundo > 0.0 else 1.0
 
 
 def load_calibration(path: Path | str) -> Calibration:

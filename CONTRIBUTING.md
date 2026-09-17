@@ -62,7 +62,7 @@ Four rules carry this system. A change that violates one is a bug even if every 
 ## Conventions
 
 - **Metres, never pixels.** Every threshold is in ground-plane metres. Pixel distances vary with depth and are meaningless as thresholds.
-- **Portuguese for operator-facing strings**, English for code, comments, and docs.
+- **Portuguese for anything a human reads, English for identifiers.** Docstrings, comments, commit messages, issues, pull requests, test names and operator-facing strings are Portuguese. Module, class, function and field names are English, so the public surface reads as code. `README.md` and this file are English, because they are the repository's front door.
 - Conventional Commits: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, `refactor:`.
 - One responsibility per module. If a file needs "and" to describe it, split it.
 
