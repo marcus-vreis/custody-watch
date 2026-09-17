@@ -31,6 +31,13 @@ def cena(*frames: list[TrackedDetection]):
     return ((float(i), frame) for i, frame in enumerate(frames))
 
 
+def cena_fina(frames: list[list[TrackedDetection]], passo: float = 0.1):
+    """Como `cena`, mas a 10 Hz. Ruído de posição só diz alguma coisa contra
+    uma janela com muitas amostras — a um quadro por segundo, três amostras
+    não distinguem tremor de deslocamento."""
+    return ((i * passo, frame) for i, frame in enumerate(frames))
+
+
 def casal_andando(passos: int = 6) -> list[list[TrackedDetection]]:
     """Duas pessoas cobrindo terreno lado a lado, dentro de 2m uma da outra."""
     return [[pessoa(1, 2.0 * i), pessoa(2, 2.0 * i + 0.5)] for i in range(passos)]
@@ -333,3 +340,38 @@ def test_dono_que_se_afasta_no_deposito_ainda_recebe_a_posse():
 
     (posse,) = resultado.events.of_kind(EventKind.BAG_OWNED)
     assert posse.party == 1
+
+
+def test_bagagem_parada_com_ruido_de_posicao_ainda_vira_ancora():
+    """A espera de repouso compara com a MÉDIA das posições pendentes, não com
+    a primeira amostra.
+
+    Medido na varredura de envelope: com a comparação contra uma amostra só,
+    4px de erro de posição de bagagem -- o dobro do erro medido em pessoa no
+    CAVIAR -- deixava o sistema MUDO. Cada excursão do ruído reiniciava a
+    contagem, a bagagem nunca assentava, e nenhuma custódia chegava a existir.
+    Média de n amostras divide o ruído por raiz de n; uma amostra só não
+    divide nada.
+    """
+    quadros = [[pessoa(1, 0.5), mala(9, 0.3 if i % 2 else -0.3)] for i in range(40)]
+
+    resultado = run_session(cena_fina(quadros), PLANO, RAPIDO)
+
+    assert len(resultado.events.of_kind(EventKind.BAG_APPEARED)) == 1
+
+
+def test_bagagem_empurrada_devagar_nao_vira_ancora():
+    """O outro lado da tolerância a ruído: comparar médias não pode deixar
+    passar bagagem que está de fato andando.
+
+    O corte é de velocidade e sai da aritmética: as metades da janela estão
+    separadas por meia janela, então dobrar a diferença entre elas estima o
+    deslocamento na janela inteira, e o limiar de movimento exige
+    `v <= limiar/janela` -- um quarto de metro por segundo com os defaults.
+    Aqui a bagagem anda a 0,6 m/s, mais que o dobro disso.
+    """
+    quadros = [[pessoa(1, 0.06 * i + 0.4), mala(9, 0.06 * i)] for i in range(40)]
+
+    resultado = run_session(cena_fina(quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []

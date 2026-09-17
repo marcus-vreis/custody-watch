@@ -98,6 +98,14 @@ class SessionResult:
         return brutos
 
 
+def _centro(posicoes: list[Point]) -> Point:
+    """Média de posições. Metros, como tudo deste lado do plano do chão."""
+    return Point(
+        sum(p.x for p in posicoes) / len(posicoes),
+        sum(p.y for p in posicoes) / len(posicoes),
+    )
+
+
 def _nearest(people: Iterable[Observation], target) -> Observation | None:
     candidates = list(people)
     if not candidates:
@@ -115,9 +123,12 @@ class _Pendente:
     a informação que separa ruído de evento ainda não chegou.
     """
 
-    since: float
-    last_t: float
-    position: Point
+    amostras: list[tuple[float, Point]]
+    """Janela deslizante das posições observadas, com o instante de cada uma.
+
+    Deslizante e não reiniciável: uma excursão de ruído não pode zerar a
+    espera, ou bagagem parada sob detector ruidoso nunca assenta.
+    """
     depositor: int | None = None
     """Quem estava ao alcance quando a bagagem chegou neste lugar.
 
@@ -127,6 +138,48 @@ class _Pendente:
     três metros, a bagagem nasce órfã, e o único abandono anotado do dataset
     deixa de ser detectado.
     """
+
+    def media(self) -> Point:
+        """Onde a bagagem está, estimado por todas as amostras da janela.
+
+        Uma amostra carrega o erro de posição inteiro do detector; a média de
+        n carrega ele dividido por raiz de n.
+        """
+        return _centro([posicao for _, posicao in self.amostras])
+
+    def parada(self, janela: float, limiar: float) -> bool:
+        """As duas metades da janela concordam sobre onde a bagagem está?
+
+        É esta a pergunta, e não "a última amostra está perto da primeira".
+        Comparar amostras individuais mede o **ruído**: medido na varredura de
+        envelope, 4px de erro de posição de bagagem -- o dobro do que se mediu
+        em pessoa no CAVIAR -- deixavam o sistema mudo, porque cada excursão
+        do ruído zerava a espera e nenhuma bagagem chegava a assentar.
+
+        Comparar médias de metades divide o ruído por raiz de n e preserva o
+        que interessa: bagagem em trânsito tem metades que discordam na
+        direção do movimento, e nenhuma quantidade de amostras conserta isso.
+
+        As duas metades estão separadas por meia janela, então dobrar a
+        diferença entre elas estima o deslocamento ao longo da janela
+        inteira -- que é a grandeza que `moved_threshold_m` mede. O dobro não
+        é fator de ajuste: sem ele o teste ficaria duas vezes mais permissivo
+        com bagagem em movimento do que o limiar diz ser.
+
+        O corte efetivo é de velocidade: `v <= limiar/janela`, um quarto de
+        metro por segundo com os defaults.
+        """
+        if not self.amostras or self.amostras[-1][0] - self.amostras[0][0] < janela:
+            return False
+
+        meio = self.amostras[0][0] + janela / 2.0
+        primeira = [posicao for t, posicao in self.amostras if t < meio]
+        segunda = [posicao for t, posicao in self.amostras if t >= meio]
+        if not primeira or not segunda:
+            return False
+
+        deslocamento = 2.0 * _centro(primeira).distance_to(_centro(segunda))
+        return deslocamento <= limiar
 
 
 class _Ambiguous:
@@ -480,11 +533,11 @@ class _Session:
         if pendente.depositor is not None:
             return
 
-        carrier = _nearest(people, pendente.position)
+        lugar = pendente.media()
+        carrier = _nearest(people, lugar)
         if (
             carrier is not None
-            and carrier.position.distance_to(pendente.position)
-            <= self.config.pipeline.owner_search_radius_m
+            and carrier.position.distance_to(lugar) <= self.config.pipeline.owner_search_radius_m
         ):
             pendente.depositor = carrier.track_id
 
@@ -496,26 +549,24 @@ class _Session:
         registro aberto ali produz uma custódia que nunca existiu, e a perda
         dela vira acusação contra quem estava carregando.
 
-        A contagem reinicia a cada deslocamento acima do limiar. Bagagem
-        puxada a meio metro por segundo reinicia a cada segundo e nunca
-        completa; bagagem no chão completa e entra.
+        A janela desliza em vez de reiniciar, e quem decide é `parada`:
+        bagagem puxada nunca tem duas metades que concordem, e bagagem no chão
+        passa a ter assim que para -- sem que uma excursão de ruído zere a
+        espera.
 
         Devolve `_NAO_ANCORA` enquanto não parou, e quem depositou quando
         parar -- `None` ali significa que ninguém estava ao alcance, e a
         bagagem nasce órfã.
         """
-        pendente = self.pending_bags.get(observation.track_id)
-        limiar = self.config.registry.moved_threshold_m
+        janela = self.config.custody.rest_confirm_s
+        pendente = self.pending_bags.setdefault(observation.track_id, _Pendente(amostras=[]))
 
-        if pendente is None or pendente.position.distance_to(observation.position) > limiar:
-            pendente = _Pendente(since=self.t, last_t=self.t, position=observation.position)
-            self.pending_bags[observation.track_id] = pendente
-            self._remember_depositor(pendente, people)
-            return _NAO_ANCORA
-
-        pendente.last_t = self.t
+        pendente.amostras.append((self.t, observation.position))
+        corte = self.t - janela
+        pendente.amostras = [(t, p) for t, p in pendente.amostras if t >= corte]
         self._remember_depositor(pendente, people)
-        if self.t - pendente.since < self.config.custody.rest_confirm_s:
+
+        if not pendente.parada(janela, self.config.registry.moved_threshold_m):
             return _NAO_ANCORA
 
         del self.pending_bags[observation.track_id]
@@ -532,7 +583,7 @@ class _Session:
         self.pending_bags = {
             track: pendente
             for track, pendente in self.pending_bags.items()
-            if pendente.last_t >= corte
+            if pendente.amostras and pendente.amostras[-1][0] >= corte
         }
 
     def identify(self, observation: Observation, people: list[Observation]) -> Bag | None:
