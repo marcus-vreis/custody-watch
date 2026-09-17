@@ -180,5 +180,7 @@ def test_janela_invertida_falha_alto(tmp_path):
         explanations=[],
     )
 
+    sessao = resultado([invertida])
+
     with pytest.raises(ValueError, match="janela invertida"):
-        review_items(resultado([invertida]), quadros, tmp_path, "cena")
+        review_items(sessao, quadros, tmp_path, "cena")

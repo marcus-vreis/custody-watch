@@ -101,3 +101,50 @@ def test_cria_o_diretorio_de_saida(tmp_path):
     render_clip(cena(), ClipRequest(0.0, 0.4, frozenset({1}), frozenset({1001}), destino))
 
     assert destino.exists()
+
+
+def cena_larga(n: int = 6, fps: float = 25.0, largura: int = 128, altura: int = 72):
+    """Quadros grandes com a caixa na metade direita — é o formato de câmera
+    de verdade, não o do CAVIAR."""
+    for i in range(n):
+        imagem = np.full((altura, largura, 3), 20 + (7 * i) % 200, dtype=np.uint8)
+        yield (
+            i / fps,
+            imagem,
+            [TrackedDetection(track_id=1, cls="person", bbox=(90.0, 10.0, 120.0, 60.0))],
+        )
+
+
+def test_quadro_largo_e_reduzido_ate_o_teto(tmp_path):
+    """A página embute cada clipe como data URI, e o custo é por pixel.
+    Medido no primeiro vídeo real: 720p a 2 fps deu ~11 MB por clipe e 142 MB
+    de página. Sem teto, o recorte só serve para material do tamanho do
+    CAVIAR."""
+    destino = render_clip(cena_larga(), pedido(tmp_path, 0.0, 0.2), max_width=64)
+
+    with Image.open(destino) as gif:
+        assert gif.size == (64, 36)
+
+
+def test_o_destaque_acompanha_a_reducao(tmp_path):
+    """Reduzir o quadro sem reduzir a caixa pinta o lugar errado — ou, com a
+    caixa fora do novo quadro, não pinta nada, que é pior: o operador recebe
+    um clipe sem indicação e volta a procurar o evento sozinho."""
+    destino = render_clip(cena_larga(), pedido(tmp_path, 0.0, 0.2, pessoas=(1,)), max_width=64)
+
+    quadro_gif = np.asarray(Image.open(destino).convert("RGB"))
+    fundo = quadro_gif[0, 0]
+    colunas = np.where((quadro_gif != fundo).any(axis=(0, 2)))[0]
+
+    assert len(colunas) > 0
+    assert colunas.min() >= 40
+    assert colunas.max() < 64
+
+
+def test_quadro_menor_que_o_teto_nao_e_ampliado(tmp_path):
+    """O teto é teto, não alvo. Ampliar material pequeno multiplicaria o
+    tamanho do clipe sem acrescentar um pixel de informação."""
+    destino = render_clip(cena(5), pedido(tmp_path, 0.0, 0.2), max_width=640)
+
+    with Image.open(destino) as gif:
+        assert gif.size == (48, 32)

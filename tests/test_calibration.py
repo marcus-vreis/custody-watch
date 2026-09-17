@@ -48,6 +48,21 @@ def test_camera_e_nota_sao_obrigatorias(tmp_path):
         load_calibration(escrever(tmp_path, camera=""))
 
 
+def test_arquivo_inexistente_recusa_com_mensagem(tmp_path):
+    """Erro de config é documentação. Um caminho errado na linha de comando
+    deve dizer o que faltou, e não vazar traceback de IO de dentro de uma
+    função que promete validar a medição do chão."""
+    with pytest.raises(ValueError, match="não encontrado"):
+        load_calibration(tmp_path / "nao_existe.json")
+
+
+def test_diretorio_no_lugar_do_arquivo_recusa(tmp_path):
+    """Apontar para a pasta em vez do arquivo é o engano comum de quem tem
+    uma calibração por câmera."""
+    with pytest.raises(ValueError, match="não encontrado"):
+        load_calibration(tmp_path)
+
+
 def test_menos_de_quatro_pontos_e_rejeitado(tmp_path):
     with pytest.raises(ValueError, match="4 correspond"):
         load_calibration(escrever(tmp_path, correspondences=QUADRADO[:3]))
@@ -168,8 +183,10 @@ def test_sem_calibracao_e_sem_escala_recusa(tmp_path):
 def test_calibracao_e_escala_juntas_recusam(tmp_path):
     """Dar as duas é ambiguidade, e adivinhar qual vale seria escolher em
     silêncio de onde vêm todas as distâncias da sessão."""
+    caminho = escrever(tmp_path)
+
     with pytest.raises(ValueError, match="uma das duas"):
-        plane_from(escrever(tmp_path), 0.05)
+        plane_from(caminho, 0.05)
 
 
 def test_escala_explicita_produz_plano_uniforme():

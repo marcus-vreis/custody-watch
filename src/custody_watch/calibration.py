@@ -67,7 +67,17 @@ def reprojection_residual(
 
 
 def load_calibration(path: Path | str) -> Calibration:
-    path = Path(path)
+    # O caminho vem da linha de comando. Resolver antes de abrir tira o
+    # relativo e o `..` do meio, e a checagem de arquivo comum transforma
+    # "apontei para a pasta errada" numa frase em vez de um traceback de IO
+    # saindo de dentro de uma função que promete validar a medição do chão.
+    path = Path(path).resolve()
+    if not path.is_file():
+        raise ValueError(
+            f"{path}: arquivo de calibração não encontrado. Esperado um JSON "
+            f"com 'camera', 'note' e ao menos 4 correspondências medidas no chão"
+        )
+
     data = json.loads(path.read_text(encoding="utf-8"))
 
     camera = str(data.get("camera", "")).strip()
