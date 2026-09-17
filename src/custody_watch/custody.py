@@ -39,6 +39,15 @@ def update_attendance(
     Roda a cada frame, mas só emite na TRANSIÇÃO de estado: emitir toda vez
     que a bagagem *está* desacompanhada afogaria o log num vídeo longo.
     Quando `events` é `None`, nada é emitido.
+
+    Roda também para bagagem invisível, contra a âncora congelada -- sem isso,
+    ocluir em ciclos impede o limiar de completar. Mas quando **nem a bagagem
+    nem nenhum membro do grupo dono** estão no quadro, não se sabe nada: ela
+    pode ter saído de cena com ele. Esse caso suprime, e é diferente de "o
+    dono está no quadro, longe", que é evidência real de abandono. A distinção
+    importa porque num aeroporto o dono sair do campo da câmera é exatamente o
+    que acontece num furto por abandono, e fechar os dois casos juntos
+    fecharia a porta certa pelo motivo errado.
     """
     if bag.state in TERMINAL_BAG_STATES or bag.state is BagState.AMBIGUA:
         return bag
@@ -51,6 +60,14 @@ def update_attendance(
         if party_manager.party_of(p.track_id) == bag.owner_party
     ]
     mais_proximo = min(distancias) if distancias else None
+
+    if mais_proximo is None and bag.occluded_since is not None:
+        # Nem a bagagem nem o dono estão no quadro. Não se sabe se ela ficou
+        # onde estava ou saiu de cena com ele, e P3 manda suprimir. O
+        # cronômetro congela, não zera: se ela reaparecer, a contagem retoma
+        # de onde parou.
+        return bag
+
     owner_nearby = mais_proximo is not None and mais_proximo <= config.unattended_distance_m
 
     previous_state = bag.state

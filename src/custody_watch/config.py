@@ -51,6 +51,7 @@ class CustodyConfig:
     carry_confirm_s: float = 1.0
     rest_confirm_s: float = 2.0
     ownership_window_s: float = 10.0
+    min_occlusion_report_s: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,15 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         "estiver por perto — é o defeito que este projeto fechou na porta do "
         "desaparecimento e reabriria na do movimento; acima de 10s o ladrão "
         "sai de quadro antes de o evento existir",
+    ),
+    "custody.min_occlusion_report_s": Bounds(
+        0.0,
+        10.0,
+        "acima de 10s a oclusão de verdade some do log, e é ela que diz em que "
+        "intervalo a custódia ficou sem observação -- quem revisa o log deixa "
+        "de conseguir reconstruir o que o sistema não viu. Zero é permitido "
+        "de propósito: significa registrar tudo, que é ruído de auditoria e "
+        "não risco",
     ),
     "custody.rest_confirm_s": Bounds(
         0.5,

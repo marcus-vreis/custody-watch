@@ -2,6 +2,7 @@ import pytest
 
 from custody_watch.bag_registry import BagRegistry
 from custody_watch.config import RegistryConfig
+from custody_watch.events import EventKind, EventLog
 from custody_watch.types import BagState, Observation, Point
 
 
@@ -197,3 +198,37 @@ def test_has_moved_segue_o_track_religado():
 
     assert registry.has_moved(obs(77, 5.1, 5.0, t=1.0)) is False
     assert registry.has_moved(obs(77, 9.0, 5.0, t=1.0)) is True
+
+
+def test_bagagem_terminal_nao_e_rebaixada_por_ambiguidade_vizinha():
+    """Custódia já decidida -- inclusive um furto já reportado ao operador --
+    não pode ser apagada do registro por uma ambiguidade posterior nas
+    vizinhanças. `removal_outcomes()` conta eventos e não muda, mas o registro
+    deixa de ser o registro do que aconteceu."""
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.observe(obs(2, 5.4, 5.0, t=0.0))
+    registry.get(1).state = BagState.RETIRADA_ESTRANHO
+
+    afetadas = registry.mark_ambiguous_neighbours(bag_id=2)
+
+    assert registry.get(1).state is BagState.RETIRADA_ESTRANHO
+    assert registry.get(2).state is BagState.AMBIGUA
+    assert afetadas == [2]
+
+
+def test_evidencia_de_vizinhanca_nomeia_o_que_carrega():
+    """`BAG_AMBIGUOUS` sai de dois lugares com evidências diferentes, e
+    `candidates` eram pessoas enquanto `neighbours` eram bagagens: ler a chave
+    errada devolvia uma lista de inteiros plausível e sem sentido nenhum. As
+    duas chaves passam a nomear o que contêm e a estar sempre presentes."""
+    registry = BagRegistry()
+    registry.observe(obs(1, 5.0, 5.0, t=0.0))
+    registry.observe(obs(2, 5.4, 5.0, t=0.0))
+    registro = EventLog()
+
+    registry.mark_ambiguous_neighbours(bag_id=1, t=3.0, events=registro)
+
+    (evento,) = registro.of_kind(EventKind.BAG_AMBIGUOUS)
+    assert evento.evidence["neighbour_bags"] == [1, 2]
+    assert evento.evidence["candidate_people"] == []

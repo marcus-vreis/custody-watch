@@ -156,6 +156,13 @@ class BagRegistry:
         as candidatas é deliberado: não há como saber qual é qual, e chutar
         corromperia o mapa de posse.
 
+        Bagagem terminal não é rebaixada. Custódia já decidida -- inclusive um
+        furto já reportado ao operador -- não pode ser apagada do registro por
+        uma ambiguidade posterior nas vizinhanças: `removal_outcomes()` conta
+        eventos e não mudaria, mas o registro deixaria de ser o registro do
+        que aconteceu, e quem lesse `bag.state` leria a coisa errada.
+        `occluded_near` já pula terminal pela mesma razão.
+
         Emite um único `BAG_AMBIGUOUS`, com o alvo em `bag` e a lista completa
         de afetados na evidência — não um evento por bagagem marcada. `t` é o
         instante do frame; o default existe só para não quebrar chamadas
@@ -164,6 +171,8 @@ class BagRegistry:
         target = self._bags[bag_id]
         affected: list[int] = []
         for other in self._bags.values():
+            if other.state in TERMINAL_BAG_STATES:
+                continue
             if target.anchor.distance_to(other.anchor) <= self._config.ambiguity_radius_m:
                 other.state = BagState.AMBIGUA
                 affected.append(other.bag_id)
@@ -178,7 +187,8 @@ class BagRegistry:
                     bag=bag_id,
                     party=target.owner_party,
                     evidence={
-                        "neighbours": affected,
+                        "neighbour_bags": affected,
+                        "candidate_people": [],
                         "radius_m": self._config.ambiguity_radius_m,
                     },
                 )

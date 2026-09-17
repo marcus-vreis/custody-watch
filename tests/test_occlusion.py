@@ -7,6 +7,7 @@ bagagem por tempo suficiente.
 """
 
 from collections import Counter
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -164,12 +165,15 @@ def multidao(duracao_s: float = DURACAO_ATE_TIMEOUT):
 
 def test_bagagem_que_volta_emite_o_intervalo_de_oclusao():
     """A oclusão vira registro auditável: quanto tempo invisível e quem esteve
-    nela. Intervalo, não instante — `Event` já é intervalo."""
-    resultado = run_session(cena(1.0), PLANO, Config())
+    nela. Intervalo, não instante — `Event` já é intervalo.
+
+    Dois segundos, e não um: o piso de `min_occlusion_report_s` deixa de fora
+    a oclusão curta, que descreve o detector e não a cena."""
+    resultado = run_session(cena(2.0), PLANO, Config())
 
     (evento,) = tipos(resultado, EventKind.BAG_OCCLUDED)
-    assert evento.duration_s == pytest.approx(1.0, abs=0.3)
-    assert ESTRANHO in evento.evidence["candidates"]
+    assert evento.duration_s == pytest.approx(2.0, abs=0.3)
+    assert ESTRANHO in evento.evidence["candidate_people"]
 
 
 def test_bagagem_que_volta_com_id_novo_e_readotada():
@@ -194,8 +198,13 @@ def test_bagagem_readotada_fica_estavel_ate_o_fim_do_video():
     frame seguinte (porque `get_by_track(901)` resolve para o bag 900 já
     religado) — um ciclo de abre-fecha a cada `missing_frames_before_occluded`
     quadros, pelo resto do vídeo. Estendendo a cena para 80s (bem além de
-    `max_occlusion_s`) para dar tempo do ciclo se manifestar."""
-    resultado = run_session(cena(1.0, bag_id_apos=901, duracao_s=80.0), PLANO, Config())
+    `max_occlusion_s`) para dar tempo do ciclo se manifestar.
+
+    Sem piso de registro de propósito: o ciclo que este teste vigia produz
+    oclusões curtas, que é exatamente o que o piso esconde. Filtrar o log aqui
+    cegaria o detector do defeito."""
+    sem_piso = Config(custody=replace(Config().custody, min_occlusion_report_s=0.0))
+    resultado = run_session(cena(1.0, bag_id_apos=901, duracao_s=80.0), PLANO, sem_piso)
 
     assert len(tipos(resultado, EventKind.BAG_OCCLUDED)) == 1
 
@@ -575,3 +584,43 @@ def test_readocao_e_exposta_para_o_recorte_de_clipe():
 
     assert resultado.bag_links == {901: BAG}
     assert resultado.raw_bag_ids(BAG) == {BAG, 901}
+
+
+def piscando(duracao_s: float = 40.0):
+    """Bagagem parada com detector oscilante: some por 0.4s a cada 3s, com o
+    dono ao lado o tempo todo. Nada acontece na cena."""
+    for i in range(int(duracao_s * FPS)):
+        t = i / FPS
+        det = [TrackedDetection(DONO, "person", caixa(10.5, 10.0, 170))]
+        if (t % 3.0) >= 0.4:
+            det.append(TrackedDetection(BAG, "suitcase", caixa(10.0, 10.0, 55)))
+        yield t, det
+
+
+def test_oscilacao_do_detector_nao_inunda_o_log_de_oclusao():
+    """#24: `end_occlusion` emitia um evento por episódio, e um detector
+    oscilante emite um por oscilação -- medido, 77 eventos em 90s sobre uma
+    bagagem parada. O piso separa oclusão da cena de oscilação do detector: a
+    rajada de falha medida no CAVIAR tem mediana de 12 quadros, cerca de meio
+    segundo."""
+    resultado = run_session(piscando(), PLANO, Config())
+
+    assert tipos(resultado, EventKind.BAG_OCCLUDED) == []
+
+
+def test_oclusao_longa_continua_no_log():
+    """O piso não pode calar a oclusão de verdade: é ela que diz ao operador
+    em que intervalo a custódia ficou sem observação."""
+
+    def some_de_verdade(duracao_s: float = 40.0):
+        for i in range(int(duracao_s * FPS)):
+            t = i / FPS
+            det = [TrackedDetection(DONO, "person", caixa(10.5, 10.0, 170))]
+            if not (10.0 <= t < 20.0):
+                det.append(TrackedDetection(BAG, "suitcase", caixa(10.0, 10.0, 55)))
+            yield t, det
+
+    resultado = run_session(some_de_verdade(), PLANO, Config())
+
+    (oclusao,) = tipos(resultado, EventKind.BAG_OCCLUDED)
+    assert oclusao.t_end - oclusao.t_start == pytest.approx(10.0, abs=0.5)

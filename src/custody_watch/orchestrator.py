@@ -359,21 +359,36 @@ class _Session:
         return bag
 
     def end_occlusion(self, bag: Bag) -> None:
-        """A bagagem voltou. Registra o intervalo e limpa o estado."""
+        """A bagagem voltou. Registra o intervalo e limpa o estado.
+
+        Oclusão curta demais não entra no log. O evento existe para dizer ao
+        operador em que intervalo a custódia ficou sem observação, e um
+        detector oscilante produz um episódio por oscilação: medido, 77
+        eventos em 90s sobre uma bagagem parada. Abaixo do piso o evento
+        descreve o detector, não a cena -- a rajada de falha medida no CAVIAR
+        tem mediana de 12 quadros, cerca de meio segundo.
+
+        O estado é limpo nos dois casos. O piso decide o que vai para o log,
+        nunca o que a lógica enxerga.
+        """
         if bag.occluded_since is None:
             return
 
-        self.events.emit(
-            Event(
-                kind=EventKind.BAG_OCCLUDED,
-                t_start=bag.occluded_since,
-                t_end=self.t,
-                subject=None,
-                bag=bag.bag_id,
-                party=bag.owner_party,
-                evidence={"candidates": sorted(bag.occlusion_candidates)},
+        if self.t - bag.occluded_since >= self.config.custody.min_occlusion_report_s:
+            self.events.emit(
+                Event(
+                    kind=EventKind.BAG_OCCLUDED,
+                    t_start=bag.occluded_since,
+                    t_end=self.t,
+                    subject=None,
+                    bag=bag.bag_id,
+                    party=bag.owner_party,
+                    evidence={
+                        "candidate_people": sorted(bag.occlusion_candidates),
+                        "neighbour_bags": [],
+                    },
+                )
             )
-        )
         bag.occluded_since = None
         bag.occlusion_candidates.clear()
 
@@ -442,6 +457,8 @@ class _Session:
                             else carrier.position.distance_to(observation.position)
                         ),
                         "anchor": [bag.anchor.x, bag.anchor.y],
+                        "candidate_people": [],
+                        "neighbour_bags": [],
                     },
                 )
             )
@@ -696,6 +713,12 @@ class _Session:
         Zero candidatos: sumiu sem ninguém ao alcance. Vários: não há como
         escolher. Nos dois casos P3 manda suprimir, não gerar.
 
+        `candidate_people` são PESSOAS, e `neighbour_bags` são BAGAGENS. As
+        duas chaves saem sempre, das três origens de `BAG_AMBIGUOUS`, porque
+        um `kind` com duas formas de evidência obriga o consumidor a ramificar
+        pela forma do dicionário -- e ler a chave errada devolvia uma lista de
+        inteiros perfeitamente plausível e sem sentido nenhum.
+
         Limpa `occluded_since`/`occlusion_candidates` nos dois ramos, do
         mesmo jeito que `end_occlusion` faz quando a bagagem volta a ser
         vista. Sem isso, se a bagagem reaparecer mais tarde -- com o mesmo
@@ -713,7 +736,10 @@ class _Session:
                     subject=None,
                     bag=bag.bag_id,
                     party=bag.owner_party,
-                    evidence={"candidates": sorted(bag.occlusion_candidates)},
+                    evidence={
+                        "candidate_people": sorted(bag.occlusion_candidates),
+                        "neighbour_bags": [],
+                    },
                 )
             )
             bag.occluded_since = None
