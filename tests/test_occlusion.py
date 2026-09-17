@@ -294,18 +294,20 @@ BAG_A, BAG_B, NOVO = 910, 911, 920
 
 
 def duas_perto_ocluidas():
-    """Duas bagagens a 0.3m uma da outra -- dentro do limiar de movimento
-    default de 0.5m, que é o raio de busca de `adopt_occluded` -- somem
-    juntas. Depois de ocluídas as duas, uma detecção com track novo reaparece
-    exatamente no meio do caminho entre elas: candidata a ambas, e não há
-    informação que desempate."""
-    for i in range(75):
+    """Duas bagagens a 0.3m uma da outra -- dentro do raio de readoção de 1m
+    de `adopt_occluded` -- somem juntas. Depois de ocluídas as duas, uma
+    detecção com track novo reaparece exatamente no meio do caminho entre
+    elas: candidata a ambas, e não há informação que desempate.
+
+    As duas ficam paradas três segundos antes de sumir porque só bagagem
+    parada vira âncora, e sem âncora não há a quem readotar."""
+    for i in range(125):
         t = i / FPS
         det = []
-        if t < 1.0:
+        if t < 3.0:
             det.append(TrackedDetection(BAG_A, "suitcase", caixa(10.0, 10.0, 55)))
             det.append(TrackedDetection(BAG_B, "suitcase", caixa(10.3, 10.0, 55)))
-        elif t < 2.0:
+        elif t < 4.0:
             pass  # janela de ausência: as duas somem ao mesmo tempo
         else:
             det.append(TrackedDetection(NOVO, "suitcase", caixa(10.15, 10.0, 55)))
