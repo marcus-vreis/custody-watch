@@ -314,3 +314,22 @@ def test_bagagem_que_volta_um_pouco_fora_da_ancora_e_readotada():
 
     assert len(resultado.events.of_kind(EventKind.BAG_APPEARED)) == 1
     assert len(resultado.events.of_kind(EventKind.TRACK_RELINKED)) == 1
+
+
+def test_dono_que_se_afasta_no_deposito_ainda_recebe_a_posse():
+    """Quem deposita é quem estava ali quando a bagagem **chegou**, não quem
+    sobrou quando ela assentou.
+
+    Medido no CAVIAR: decidindo a posse só no instante em que a bagagem vira
+    âncora, o dono de `LeftBag` já estava a mais de 3m -- ele larga a mala e
+    sai andando, que é a definição do abandono. A bagagem nascia órfã, órfã
+    não acumula tempo desacompanhado, e o único positivo anotado do dataset
+    virava `P_miss = 0.33`.
+    """
+    quadros = [[pessoa(1, 0.5), mala(9, 0.0)]]
+    quadros += [[pessoa(1, 4.0 * i), mala(9, 0.0)] for i in range(1, 5)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    (posse,) = resultado.events.of_kind(EventKind.BAG_OWNED)
+    assert posse.party == 1

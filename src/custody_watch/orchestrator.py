@@ -118,6 +118,15 @@ class _Pendente:
     since: float
     last_t: float
     position: Point
+    depositor: int | None = None
+    """Quem estava ao alcance quando a bagagem chegou neste lugar.
+
+    Guardado aqui, e não decidido no instante em que a bagagem vira âncora,
+    porque quem deposita **sai andando**: é a definição do abandono. Medido no
+    CAVIAR, decidir a posse dois segundos depois já encontra o dono a mais de
+    três metros, a bagagem nasce órfã, e o único abandono anotado do dataset
+    deixa de ser detectado.
+    """
 
 
 class _Ambiguous:
@@ -135,6 +144,21 @@ class _Ambiguous:
 
 
 AMBIGUOUS = _Ambiguous()
+
+
+class _NaoAncora:
+    """Devolvido por `anchoring` enquanto a bagagem não parou.
+
+    Distinto de `None`, que ali significa "parou, e ninguém estava ao alcance
+    para responder pelo depósito" -- confundir os dois registraria bagagem em
+    trânsito como âncora órfã.
+    """
+
+    def __repr__(self) -> str:
+        return "NAO_ANCORA"
+
+
+_NAO_ANCORA = _NaoAncora()
 
 
 class _Session:
@@ -429,7 +453,25 @@ class _Session:
             self.flags.add(flag)
         return True
 
-    def anchoring(self, observation: Observation) -> bool:
+    def _remember_depositor(self, pendente: _Pendente, people: list[Observation]) -> None:
+        """O primeiro que aparecer ao alcance responde pelo depósito.
+
+        O primeiro, e não o último: a cada quadro que passa o dono está mais
+        longe e um estranho qualquer está mais perto, então esperar só piora a
+        evidência.
+        """
+        if pendente.depositor is not None:
+            return
+
+        carrier = _nearest(people, pendente.position)
+        if (
+            carrier is not None
+            and carrier.position.distance_to(pendente.position)
+            <= self.config.pipeline.owner_search_radius_m
+        ):
+            pendente.depositor = carrier.track_id
+
+    def anchoring(self, observation: Observation, people: list[Observation]) -> int | None:
         """A bagagem ficou parada o bastante para virar âncora?
 
         Não é só uma espera: enquanto a observação não se sustenta no mesmo
@@ -440,22 +482,27 @@ class _Session:
         A contagem reinicia a cada deslocamento acima do limiar. Bagagem
         puxada a meio metro por segundo reinicia a cada segundo e nunca
         completa; bagagem no chão completa e entra.
+
+        Devolve `_NAO_ANCORA` enquanto não parou, e quem depositou quando
+        parar -- `None` ali significa que ninguém estava ao alcance, e a
+        bagagem nasce órfã.
         """
         pendente = self.pending_bags.get(observation.track_id)
         limiar = self.config.registry.moved_threshold_m
 
         if pendente is None or pendente.position.distance_to(observation.position) > limiar:
-            self.pending_bags[observation.track_id] = _Pendente(
-                since=self.t, last_t=self.t, position=observation.position
-            )
-            return False
+            pendente = _Pendente(since=self.t, last_t=self.t, position=observation.position)
+            self.pending_bags[observation.track_id] = pendente
+            self._remember_depositor(pendente, people)
+            return _NAO_ANCORA
 
         pendente.last_t = self.t
+        self._remember_depositor(pendente, people)
         if self.t - pendente.since < self.config.custody.rest_confirm_s:
-            return False
+            return _NAO_ANCORA
 
         del self.pending_bags[observation.track_id]
-        return True
+        return pendente.depositor
 
     def forget_stale_pending(self) -> None:
         """Candidata que sumiu nunca vai parar.
@@ -471,7 +518,7 @@ class _Session:
             if pendente.last_t >= corte
         }
 
-    def identify(self, observation: Observation) -> Bag | None:
+    def identify(self, observation: Observation, people: list[Observation]) -> Bag | None:
         """A qual bagagem registrada esta observação pertence, se a alguma.
 
         Devolve `None` quando a observação não deve produzir efeito nenhum:
@@ -495,18 +542,28 @@ class _Session:
         if adotada is not None:
             return adotada
 
-        if not self.anchoring(observation):
+        depositante = self.anchoring(observation, people)
+        if depositante is _NAO_ANCORA:
             return None
-        return self.registry.observe(observation, events=self.events)
+
+        bag = self.registry.observe(observation, events=self.events)
+        if depositante is not None:
+            self.registry.assign_owner(
+                bag.bag_id, self.party_for(depositante), t=self.t, events=self.events
+            )
+        return bag
 
     def claim_ownership(self, bag: Bag, people: list[Observation]) -> None:
         """Posse é o depósito: quem estava junto quando a bagagem parou.
 
+        É a rede embaixo do depósito: a posse já sai de `anchoring` quando
+        alguém estava ao alcance enquanto a bagagem chegava. Isto aqui cobre o
+        caso em que ninguém estava — detector perdendo o dono durante a
+        janela inteira, que com 39% de ausência medida não é raro.
+
         Tentada a cada quadro enquanto a bagagem for órfã, e não uma vez só.
         Uma bagagem sem dono é uma pergunta em aberto, não um fato
-        estabelecido — e a chance de o dono estar invisível num quadro
-        específico é a taxa de falha do detector, medida em 39% de ausência
-        com 5% de entrada em falha.
+        estabelecido.
 
         A janela é o que impede a retentativa de reabrir o ataque que a regra
         P1 fecha: passado o prazo desde o depósito, quem se aproxima de uma
@@ -532,7 +589,7 @@ class _Session:
         seen: set[int] = set()
 
         for observation in bags:
-            conhecida = self.identify(observation)
+            conhecida = self.identify(observation, people)
             if conhecida is None:
                 continue
 
