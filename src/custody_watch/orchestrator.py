@@ -67,7 +67,7 @@ from .flags import FlagStore, flag_contact, flag_for_removal, flag_proximity
 from .ground_plane import GroundPlane
 from .party import PartyManager, is_comoving
 from .reid import TrackLinker
-from .tracking import PlausibilityGate, TrackedDetection, to_observations
+from .tracking import PlausibilityGate, TrackedDetection, anchor_vetoes, to_observations
 from .types import BAG_CLASSES, TERMINAL_BAG_STATES, Bag, BagState, Observation, Point
 
 
@@ -232,6 +232,9 @@ class _Session:
         self.missing: dict[int, int] = {}
         self.pending_bags: dict[int, _Pendente] = {}
         """Bagagens vistas mas ainda não paradas. Ver `anchoring`."""
+        self.vetoes: dict[int, str] = {}
+        """Tracks de bagagem que a imagem do quadro atual diz que não podem
+        virar âncora, e por quê. Ver `tracking.anchor_vetoes`."""
         self.ambiguous_tracks: set[int] = set()
         """Tracks de bagagem cuja identidade a readoção não conseguiu resolver.
 
@@ -590,8 +593,12 @@ class _Session:
         """A qual bagagem registrada esta observação pertence, se a alguma.
 
         Devolve `None` quando a observação não deve produzir efeito nenhum:
-        track já declarado ambíguo, readoção recusada por ambiguidade, ou
-        bagagem que ainda não parou.
+        track já declarado ambíguo, readoção recusada por ambiguidade,
+        bagagem vetada pela imagem, ou bagagem que ainda não parou.
+
+        O veto vem depois da readoção de propósito: ele fala de âncora nova.
+        Uma bagagem já registrada que passa a ser carregada é justamente o
+        que `carry_away` precisa ver -- vetá-la faria o furto virar sumiço.
         """
         if observation.track_id in self.ambiguous_tracks:
             return None
@@ -609,6 +616,14 @@ class _Session:
             return None
         if adotada is not None:
             return adotada
+
+        if observation.track_id in self.vetoes:
+            # Cortada pela borda, pequena demais para o detector ser confiável,
+            # ou dentro da silhueta de alguém: nenhuma delas é bagagem
+            # depositada. A espera recomeça do zero quando o veto cair --
+            # uma mochila que sai das costas e vai para o chão é outro fato.
+            self.pending_bags.pop(observation.track_id, None)
+            return None
 
         depositante = self.anchoring(observation, people)
         if depositante is _NAO_ANCORA:
@@ -830,6 +845,7 @@ def run_session(
         if session.frames % pipeline.merge_every_frames == 0:
             session.merge_parties(people)
 
+        session.vetoes = anchor_vetoes(tracked, pipeline.min_bag_height_px)
         seen = session.observe_bags(bags, people)
         session.relational_flags(people)
         session.resolve_removals(seen, people)

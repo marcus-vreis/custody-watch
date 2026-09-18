@@ -42,6 +42,11 @@ class VideoFrame:
     tracked: list[TrackedDetection] = field(default_factory=list)
 
 
+MARGEM_BORDA_PX = 2.0
+"""Folga para o arredondamento das caixas do detector, que raramente chegam
+exatamente na última linha da imagem mesmo quando o objeto é cortado ali."""
+
+
 def parse_result(
     result: Any, min_confidence: float, with_appearance: bool = False
 ) -> list[TrackedDetection]:
@@ -59,6 +64,7 @@ def parse_result(
 
     nomes = result.names
     imagem = getattr(result, "orig_img", None)
+    altura_quadro = imagem.shape[0] if imagem is not None else None
     tracked: list[TrackedDetection] = []
 
     for box, track_id in zip(boxes, boxes.id.tolist(), strict=True):
@@ -82,6 +88,9 @@ def parse_result(
                 cls=classe,
                 bbox=(x1, y1, x2, y2),
                 appearance=aparencia,
+                touches_bottom=(
+                    altura_quadro is not None and y2 >= altura_quadro - MARGEM_BORDA_PX
+                ),
             )
         )
 

@@ -30,6 +30,72 @@ class TrackedDetection:
     cls: str
     bbox: tuple[float, float, float, float]
     appearance: Appearance | None = None
+    touches_bottom: bool = False
+    """A caixa encosta na borda de baixo do quadro.
+
+    O pé da caixa é o ponto que o plano do chão projeta. Cortada pela borda,
+    o pé vira a borda da imagem, e a projeção passa a dar sempre a mesma
+    linha — a bagagem parece parada enquanto é puxada. Só quem produziu a
+    detecção sabe o tamanho do quadro, então é lá que a marca nasce.
+    """
+
+
+CONTIDA_NA_PESSOA = 0.8
+"""Fração da caixa da bagagem dentro da caixa de uma pessoa a partir da qual
+ela está na silhueta de alguém. Bolsa em cima do banco ao lado de quem senta
+fica perto de um terço — é o caso que o veto não pode pegar, porque era assim
+que estavam as bolsas furtadas no MEVA."""
+
+ACIMA_DOS_PES = 0.1
+"""Quanto, em fração da altura da pessoa, a base da bagagem precisa estar
+acima dos pés dela para não estar no chão. Mala apoiada ao lado dos pés tem a
+base na mesma linha; mochila nas costas fica a mais de um terço da altura."""
+
+
+def _contida(dentro: tuple[float, ...], fora: tuple[float, ...]) -> float:
+    ix = max(0.0, min(dentro[2], fora[2]) - max(dentro[0], fora[0]))
+    iy = max(0.0, min(dentro[3], fora[3]) - max(dentro[1], fora[1]))
+    area = (dentro[2] - dentro[0]) * (dentro[3] - dentro[1])
+    return ix * iy / area if area > 0 else 0.0
+
+
+def _carregada(bolsa: tuple[float, ...], pessoas: list[tuple[float, ...]]) -> bool:
+    for p in pessoas:
+        altura = p[3] - p[1]
+        if _contida(bolsa, p) >= CONTIDA_NA_PESSOA and p[3] - bolsa[3] > ACIMA_DOS_PES * altura:
+            return True
+    return False
+
+
+def anchor_vetoes(tracked: Iterable[TrackedDetection], min_bag_height_px: float) -> dict[int, str]:
+    """Bagagens que a imagem diz que não podem virar âncora, e por quê.
+
+    Três perguntas que só têm resposta em pixel — nenhuma delas é distância,
+    e distância continua em metros. Todas saíram de vídeo real:
+
+    - **cortada**: encosta na borda de baixo, e o ponto no chão é inobservável
+    - **pequena**: abaixo da altura em que o detector é confiável; `0` desliga,
+      o que só é honesto para caixa anotada
+    - **carregada**: dentro da silhueta de uma pessoa e acima dos pés dela.
+      Parar não é depositar: a mochila de quem espera parado passa no teste
+      de repouso junto com a pessoa
+
+    Vale só para âncora NOVA. Bagagem já registrada segue sendo observada, ou
+    o ladrão que a carrega a faria sumir em vez de gerar retirada.
+    """
+    itens = list(tracked)
+    pessoas = [d.bbox for d in itens if d.cls == "person"]
+    vetos: dict[int, str] = {}
+    for d in itens:
+        if d.cls == "person":
+            continue
+        if d.touches_bottom:
+            vetos[d.track_id] = "cortada"
+        elif d.bbox[3] - d.bbox[1] < min_bag_height_px:
+            vetos[d.track_id] = "pequena"
+        elif _carregada(d.bbox, pessoas):
+            vetos[d.track_id] = "carregada"
+    return vetos
 
 
 def iou(a: tuple[float, ...], b: tuple[float, ...]) -> float:

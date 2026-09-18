@@ -24,7 +24,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from custody_watch.caviar import SCENARIOS, estimate_metres_per_pixel, ground_plane, load_clip
+from custody_watch.caviar import (
+    SCENARIOS,
+    annotated_config,
+    estimate_metres_per_pixel,
+    ground_plane,
+    load_clip,
+)
+from custody_watch.config import Config
 from custody_watch.events import EventKind
 from custody_watch.orchestrator import run_session
 
@@ -57,7 +64,9 @@ def main() -> int:
     for scenario in SCENARIOS:
         linha = f"{scenario:<22}"
         for reid in (False, True):
-            resultado = run_session(load_clip(DATA, scenario, with_appearance=reid), plane)
+            resultado = run_session(
+                load_clip(DATA, scenario, with_appearance=reid), plane, annotated_config(Config())
+            )
             dono = len(resultado.events.of_kind(EventKind.BAG_REMOVED_BY_OWNER))
             estranho = len(resultado.events.of_kind(EventKind.BAG_REMOVED_BY_STRANGER))
             falsos[reid] += estranho

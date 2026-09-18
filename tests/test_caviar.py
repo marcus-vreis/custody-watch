@@ -93,3 +93,14 @@ def test_ground_plane_aplica_a_escala():
     plano = ground_plane(0.05)
 
     assert plano.project(100.0, 200.0) == Point(5.0, 10.0)
+
+
+def test_configuracao_anotada_desliga_o_piso_de_resolucao():
+    """Caixa anotada é percepção perfeita por construção. O piso existe para
+    a confiabilidade do detector, e aplicado ao CAVIAR -- bagagem de 9 a 22px
+    -- apagaria a avaliação inteira."""
+    from custody_watch.caviar import annotated_config
+    from custody_watch.config import Config
+
+    assert Config().pipeline.min_bag_height_px > 0
+    assert annotated_config(Config()).pipeline.min_bag_height_px == 0

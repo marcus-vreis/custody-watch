@@ -81,6 +81,7 @@ class PipelineConfig:
     proximity_radius_m: float = 2.0
     proximity_flag_s: float = 90.0
     max_observation_speed_ms: float = 25.0
+    min_bag_height_px: float = 40.0
 
 
 @dataclass(frozen=True)
@@ -238,6 +239,14 @@ SAFE_BOUNDS: dict[str, Bounds] = {
         5.0,
         "acima de 5m o back-tracing atribui a bagagem a quem so passava pela "
         "regiao, e o dono errado torna toda a cadeia de custodia invalida",
+    ),
+    "pipeline.min_bag_height_px": Bounds(
+        0.0,
+        200.0,
+        "acima de 200px nenhuma bagagem real de uma câmera de teto passa, e o "
+        "sistema fica mudo sem avisar; o valor padrão, 40px, é o que uma mala de "
+        "55cm ocupa a 73 px/m, a exigência medida contra o CAVIAR. Zero desliga "
+        "o piso, o que só é honesto para caixa anotada à mão",
     ),
     "pipeline.missing_frames_before_occluded": Bounds(
         2,

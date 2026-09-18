@@ -13,8 +13,13 @@ PLANO = GroundPlane(np.eye(3))
 # cenários sem exercitar nada. E `cena` faz um quadro valer um segundo, então
 # o timeout de oclusão desce para o mínimo da faixa segura — senão todo
 # cenário de retirada precisaria de mais de trinta quadros.
+#
+# O piso de resolução fica desligado: no plano identidade uma mala tem 0.4
+# de altura, e o piso existe para a confiabilidade de um detector que estes
+# cenários não têm. Ele tem teste próprio.
+SEM_PISO = 0.0
 RAPIDO = Config(
-    pipeline=PipelineConfig(merge_every_frames=1),
+    pipeline=PipelineConfig(merge_every_frames=1, min_bag_height_px=SEM_PISO),
     custody=CustodyConfig(max_occlusion_s=5.0),
 )
 
@@ -24,7 +29,13 @@ def pessoa(track_id: int, x: float) -> TrackedDetection:
 
 
 def mala(track_id: int, x: float) -> TrackedDetection:
-    return TrackedDetection(track_id=track_id, cls="suitcase", bbox=(x - 0.2, 0.0, x + 0.2, 0.4))
+    """Mala no chão: a base na mesma linha dos pés de quem está ao lado.
+
+    Antes a caixa ia de 0 a 0.4 e a da pessoa de 0 a 1 -- geometria de
+    mochila nas costas. Enquanto a imagem não era consultada isso não
+    importava; com o veto de bagagem carregada, importa.
+    """
+    return TrackedDetection(track_id=track_id, cls="suitcase", bbox=(x - 0.2, 0.6, x + 0.2, 1.0))
 
 
 def cena(*frames: list[TrackedDetection]):
@@ -158,7 +169,11 @@ def test_dono_perto_da_propria_mala_nao_gera_flag():
 
 
 def test_permanencia_prolongada_gera_flag_n1():
-    config = Config(pipeline=PipelineConfig(merge_every_frames=1, proximity_flag_s=3.0))
+    config = Config(
+        pipeline=PipelineConfig(
+            merge_every_frames=1, proximity_flag_s=3.0, min_bag_height_px=SEM_PISO
+        )
+    )
     quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 2
     quadros += [[pessoa(1, 0.0), pessoa(7, 1.5), mala(9, 0.3)]] * 8
 
@@ -170,7 +185,11 @@ def test_permanencia_prolongada_gera_flag_n1():
 
 def test_n1_sozinho_nao_entra_na_fila():
     """N1 acumula contexto sem consumir tempo de operador."""
-    config = Config(pipeline=PipelineConfig(merge_every_frames=1, proximity_flag_s=3.0))
+    config = Config(
+        pipeline=PipelineConfig(
+            merge_every_frames=1, proximity_flag_s=3.0, min_bag_height_px=SEM_PISO
+        )
+    )
     quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 2
     quadros += [[pessoa(1, 0.0), pessoa(7, 1.5), mala(9, 0.3)]] * 8
 
@@ -182,7 +201,11 @@ def test_n1_sozinho_nao_entra_na_fila():
 
 def test_fila_ranqueia_quem_acumulou_mais_flags():
     """Com um flag por pessoa a fila nunca ordenou nada de verdade."""
-    config = Config(pipeline=PipelineConfig(merge_every_frames=1, proximity_flag_s=2.0))
+    config = Config(
+        pipeline=PipelineConfig(
+            merge_every_frames=1, proximity_flag_s=2.0, min_bag_height_px=SEM_PISO
+        )
+    )
     quadros = [[pessoa(1, 0.0), mala(9, 0.3)]] * 2
     # 7 se aproxima e depois encosta; 8 so passa perto.
     quadros += [[pessoa(1, 0.0), pessoa(7, 1.5), pessoa(8, 1.5), mala(9, 0.3)]] * 6
@@ -373,5 +396,43 @@ def test_bagagem_empurrada_devagar_nao_vira_ancora():
     quadros = [[pessoa(1, 0.06 * i + 0.4), mala(9, 0.06 * i)] for i in range(40)]
 
     resultado = run_session(cena_fina(quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []
+
+
+# --- o que a imagem veta antes do repouso -------------------------------------
+
+
+def test_mochila_de_quem_espera_parado_nao_vira_ancora():
+    """Parar não é depositar. Medido no MEVA: a mochila de quem espera parado
+    passava no teste de repouso junto com a pessoa, e quando ela saía andando
+    virava retirada -- 3 acusações falsas em 25 minutos de vídeo real."""
+    quadros = [[pessoa(1, 0.0), mochila(9, 0.0)] for _ in range(8)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []
+
+
+def test_bagagem_cortada_pela_borda_nao_vira_ancora():
+    """Cortada pela borda de baixo, o pé da caixa é a borda da imagem e não o
+    chão. Medido no MEVA: a caixa assim passou no repouso e deu ao ladrão a
+    posse da bolsa que ele levava."""
+    cortada = TrackedDetection(9, "suitcase", (-0.2, 0.6, 0.2, 1.0), touches_bottom=True)
+    quadros = [[pessoa(1, 0.5), cortada] for _ in range(6)]
+
+    resultado = run_session(cena(*quadros), PLANO, RAPIDO)
+
+    assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []
+
+
+def test_piso_de_resolucao_veta_bagagem_pequena():
+    """Com o piso padrão, a bagagem sintética destes testes -- 0.4 de altura
+    no plano identidade -- é pequena demais para o detector ser confiável.
+    É por isso que `RAPIDO` desliga o piso: ele não é o que se testa aqui."""
+    quadros = [[pessoa(1, 0.5), mala(9, 0.0)] for _ in range(6)]
+    com_piso = Config(pipeline=PipelineConfig(merge_every_frames=1))
+
+    resultado = run_session(cena(*quadros), PLANO, com_piso)
 
     assert resultado.events.of_kind(EventKind.BAG_APPEARED) == []
