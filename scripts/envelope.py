@@ -36,7 +36,13 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from custody_watch.caviar import SCENARIOS, estimate_metres_per_pixel, ground_plane, load_clip
+from custody_watch.caviar import (
+    SCENARIOS,
+    annotated_config,
+    estimate_metres_per_pixel,
+    ground_plane,
+    load_clip,
+)
 from custody_watch.config import load_config
 from custody_watch.events import EventKind
 from custody_watch.noise import NoiseModel, degrade
@@ -138,7 +144,9 @@ def main() -> int:
         print("rode primeiro: uv run python scripts/download_caviar.py", file=sys.stderr)
         return 1
 
-    config = load_config(CONFIG)
+    # O ruído é sintético por cima de caixa anotada, então o piso de
+    # resolução do detector não se aplica -- ele mediria o tamanho do CAVIAR.
+    config = annotated_config(load_config(CONFIG))
     plane = ground_plane(estimate_metres_per_pixel(DATA))
     orcamento = config.alerts.operator_hourly_budget / 60.0
 

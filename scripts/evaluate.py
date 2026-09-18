@@ -23,7 +23,13 @@ import sys
 from pathlib import Path
 
 from custody_watch.annotations import GroundTruthEvent, load_annotations, match_events
-from custody_watch.caviar import SCENARIOS, estimate_metres_per_pixel, ground_plane, load_clip
+from custody_watch.caviar import (
+    SCENARIOS,
+    annotated_config,
+    estimate_metres_per_pixel,
+    ground_plane,
+    load_clip,
+)
 from custody_watch.config import Config, load_config
 from custody_watch.events import EventKind
 from custody_watch.metrics import ScoredEvent, p_miss_at_rfa
@@ -61,7 +67,8 @@ def main() -> int:
         print("rode primeiro: uv run python scripts/annotate_caviar.py", file=sys.stderr)
         return 1
 
-    config = load_config(args.config) if args.config else Config()
+    # Caixa anotada: o piso de resolução do detector não se aplica.
+    config = annotated_config(load_config(args.config) if args.config else Config())
     plane = ground_plane(estimate_metres_per_pixel(DATA))
     limiar = config.custody.unattended_time_s
     # O atraso do evento e funcao do limiar em uso, entao vem daqui.

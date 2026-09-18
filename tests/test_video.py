@@ -170,3 +170,21 @@ def test_quadros_crus_aceitam_fps_declarado(tmp_path):
     lidos = list(raw_frames(caminho, fps=10.0))
 
     assert lidos[2][0] == pytest.approx(0.2)
+
+
+def test_caixa_que_toca_a_borda_de_baixo_e_marcada():
+    """Só quem produz a detecção sabe o tamanho do quadro. A partir daqui o
+    pé da caixa é tratado como o ponto no chão, e sem esta marca uma caixa
+    cortada pela borda seria projetada como se estivesse apoiada ali."""
+    imagem = np.zeros((100, 200, 3), np.uint8)
+    resultado = FakeResult(
+        [_Box(28, 0.9, (10, 60, 50, 100)), _Box(28, 0.9, (80, 40, 120, 80))],
+        NOMES,
+        image=imagem,
+        ids=[1, 2],
+    )
+
+    cortada, inteira = parse_result(resultado, min_confidence=0.35)
+
+    assert cortada.touches_bottom is True
+    assert inteira.touches_bottom is False

@@ -29,12 +29,13 @@ from __future__ import annotations
 import tarfile
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from .config import Config
 from .ground_plane import GroundPlane
 from .reid import describe
 from .tracking import TrackedDetection
@@ -144,6 +145,17 @@ def _load_jpeg_bytes(archive: Path) -> dict[int, bytes]:
             if digitos and handle is not None:
                 quadros[int(digitos)] = handle.read()
     return quadros
+
+
+def annotated_config(config: Config) -> Config:
+    """A mesma configuração, sem o piso de resolução.
+
+    O piso existe para a confiabilidade do detector. Caixa anotada à mão é
+    percepção perfeita por construção, e o CAVIAR anota bagagem de 9 a 22px:
+    com o piso ligado a avaliação inteira sumiria, e o motivo seria o
+    tamanho do vídeo de 2004, não a lógica.
+    """
+    return replace(config, pipeline=replace(config.pipeline, min_bag_height_px=0.0))
 
 
 def load_clip(

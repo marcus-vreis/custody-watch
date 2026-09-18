@@ -20,11 +20,13 @@ from pathlib import Path
 
 from custody_watch.caviar import (
     SCENARIOS,
+    annotated_config,
     estimate_metres_per_pixel,
     ground_plane,
     load_clip,
     load_frames,
 )
+from custody_watch.config import Config
 from custody_watch.orchestrator import run_session
 from custody_watch.report import SessionReport, write_report
 from custody_watch.review import review_items
@@ -51,7 +53,9 @@ def main() -> int:
     sessoes: list[SessionReport] = []
 
     for cenario in SCENARIOS:
-        resultado = run_session(load_clip(DATA, cenario, with_appearance=True), plane)
+        resultado = run_session(
+            load_clip(DATA, cenario, with_appearance=True), plane, annotated_config(Config())
+        )
         contagem: dict[str, int] = {}
         for evento in resultado.events:
             contagem[evento.kind.value] = contagem.get(evento.kind.value, 0) + 1
