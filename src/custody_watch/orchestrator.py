@@ -68,7 +68,15 @@ from .ground_plane import GroundPlane
 from .party import PartyManager, is_comoving
 from .reid import TrackLinker
 from .tracking import PlausibilityGate, TrackedDetection, anchor_vetoes, to_observations
-from .types import BAG_CLASSES, TERMINAL_BAG_STATES, Bag, BagState, Observation, Point
+from .types import (
+    BAG_CLASSES,
+    TERMINAL_BAG_STATES,
+    Bag,
+    BagState,
+    FlagLevel,
+    Observation,
+    Point,
+)
 
 
 @dataclass
@@ -821,44 +829,102 @@ class _Session:
         bag.occlusion_candidates.clear()
 
 
+class LiveSession:
+    """A mesma sessão de `run_session`, alimentada um quadro de cada vez.
+
+    Numa câmera não existe fim de vídeo, e `run_session` só entrega a fila
+    quando os quadros acabam. Esta é o corpo daquele laço virando método: a
+    fila, os eventos e o estado de cada bagagem ficam consultáveis entre um
+    quadro e outro, que é o que uma tela ao vivo precisa.
+
+    `run_session` é um laço sobre ela, então as duas não têm como divergir.
+    """
+
+    def __init__(self, plane: GroundPlane, config: Config | None = None) -> None:
+        self._plane = plane
+        self._s = _Session(plane, config or Config())
+
+    def feed(self, t: float, tracked: list[TrackedDetection]) -> None:
+        s = self._s
+        pipeline = s.config.pipeline
+        s.frames += 1
+        s.t = t
+
+        # O portao roda antes de tudo: uma observacao que implica velocidade
+        # impossivel e artefato de projecao, e alimenta a medida de extensao
+        # como se fosse deslocamento real.
+        observations = s.gate.filter(to_observations(tracked, self._plane, t))
+        bags = [o for o in observations if o.cls in BAG_CLASSES]
+        people = s.resolve_people(observations, tracked)
+
+        # Fundir é O(n²) sobre pares próximos, com is_comoving por dentro.
+        # A cada frame seria desperdício: grupos não se formam em 40 ms.
+        if s.frames % pipeline.merge_every_frames == 0:
+            s.merge_parties(people)
+
+        s.vetoes = anchor_vetoes(tracked, pipeline.min_bag_height_px)
+        seen = s.observe_bags(bags, people)
+        s.relational_flags(people)
+        s.resolve_removals(seen, people)
+
+    @property
+    def t(self) -> float:
+        return self._s.t
+
+    @property
+    def frames(self) -> int:
+        return self._s.frames
+
+    @property
+    def events(self) -> EventLog:
+        return self._s.events
+
+    def queue(self) -> list[AlertItem]:
+        """A fila como está agora, ranqueada pelo mesmo `build_queue`."""
+        return build_queue(self._s.flags, self._s.t, self._s.config.alerts)
+
+    def anchors(self) -> list[Bag]:
+        """Bagagens registradas cuja custódia ainda está em aberto."""
+        return [
+            b
+            for b in self._s.registry.all()
+            if b.state not in TERMINAL_BAG_STATES and b.state is not BagState.AMBIGUA
+        ]
+
+    def bag_for_track(self, track_id: int) -> Bag | None:
+        """A bagagem registrada por trás de um track bruto, se houver."""
+        return self._s.registry.get_by_track(track_id)
+
+    def canonical_person(self, track_id: int) -> int:
+        return self._s.linker.links().get(track_id, track_id)
+
+    def person_level(self, track_id: int) -> FlagLevel | None:
+        """O nível mais alto já sinalizado para a pessoa por trás deste track."""
+        flags = self._s.flags.for_person(self.canonical_person(track_id))
+        return max((f.level for f in flags), default=None)
+
+    def result(self) -> SessionResult:
+        s = self._s
+        return SessionResult(
+            events=s.events,
+            queue=self.queue(),
+            frames=s.frames,
+            duration_s=s.t,
+            flags=s.flags,
+            links=s.linker.links(),
+            bag_links=s.registry.links(),
+        )
+
+
 def run_session(
     frames: Iterator[tuple[float, list[TrackedDetection]]],
     plane: GroundPlane,
     config: Config | None = None,
 ) -> SessionResult:
-    session = _Session(plane, config or Config())
-    pipeline = session.config.pipeline
-
+    sessao = LiveSession(plane, config)
     for t, tracked in frames:
-        session.frames += 1
-        session.t = t
-
-        # O portao roda antes de tudo: uma observacao que implica velocidade
-        # impossivel e artefato de projecao, e alimenta a medida de extensao
-        # como se fosse deslocamento real.
-        observations = session.gate.filter(to_observations(tracked, plane, t))
-        bags = [o for o in observations if o.cls in BAG_CLASSES]
-        people = session.resolve_people(observations, tracked)
-
-        # Fundir é O(n²) sobre pares próximos, com is_comoving por dentro.
-        # A cada frame seria desperdício: grupos não se formam em 40 ms.
-        if session.frames % pipeline.merge_every_frames == 0:
-            session.merge_parties(people)
-
-        session.vetoes = anchor_vetoes(tracked, pipeline.min_bag_height_px)
-        seen = session.observe_bags(bags, people)
-        session.relational_flags(people)
-        session.resolve_removals(seen, people)
-
-    return SessionResult(
-        events=session.events,
-        queue=build_queue(session.flags, session.t, session.config.alerts),
-        frames=session.frames,
-        duration_s=session.t,
-        flags=session.flags,
-        links=session.linker.links(),
-        bag_links=session.registry.links(),
-    )
+        sessao.feed(t, tracked)
+    return sessao.result()
 
 
 def removal_outcomes(result: SessionResult) -> dict[BagState, int]:
@@ -872,4 +938,4 @@ def removal_outcomes(result: SessionResult) -> dict[BagState, int]:
     return counts
 
 
-__all__ = ["Bag", "SessionResult", "removal_outcomes", "run_session"]
+__all__ = ["Bag", "LiveSession", "SessionResult", "removal_outcomes", "run_session"]
