@@ -152,6 +152,12 @@ class Servidor(ThreadingHTTPServer):
         if ":" in host:
             self.address_family = socket.AF_INET6
         super().__init__((host, porta), _Atendente)
+        if tls is not None:
+            # Sem aperto de mão no `accept`: ele travaria o laço que aceita
+            # todas as outras conexões. `finish_request` o faz, com prazo.
+            self.socket = tls.wrap_socket(
+                self.socket, server_side=True, do_handshake_on_connect=False
+            )
 
     @property
     def cifrado(self) -> bool:
@@ -160,26 +166,22 @@ class Servidor(ThreadingHTTPServer):
     def finish_request(self, request: socket.socket, client_address: tuple) -> None:
         """Com TLS, o aperto de mão acontece aqui, na thread da conexão.
 
-        Fazê-lo no `accept` travaria o laço que aceita todas as outras: um
-        único cliente que abre a conexão e não negocia deixaria a tela fora
-        do ar para todo mundo.
+        Fazê-lo no `accept` deixaria um único cliente que abre a conexão e
+        não negocia tirar a tela do ar para todo mundo.
 
         Aperto de mão que falha termina calado. Uma aba esquecida em
         `http://` consulta o estado duas vezes por segundo, e cada tentativa
         virava um traceback inteiro no terminal; quem conectou errado já vê
         o erro do lado dele.
         """
-        if self._tls is None:
-            super().finish_request(request, client_address)
-            return
-        request.settimeout(HANDSHAKE_S)
-        try:
-            cifrada = self._tls.wrap_socket(request, server_side=True)
-        except OSError:  # ssl.SSLError e o prazo do aperto de mão são OSError
-            return
-        with cifrada:
-            cifrada.settimeout(None)
-            super().finish_request(cifrada, client_address)
+        if isinstance(request, ssl.SSLSocket):
+            request.settimeout(HANDSHAKE_S)
+            try:
+                request.do_handshake()
+            except OSError:  # ssl.SSLError e o prazo do aperto de mão são OSError
+                return
+            request.settimeout(None)
+        super().finish_request(request, client_address)
 
     @property
     def porta(self) -> int:

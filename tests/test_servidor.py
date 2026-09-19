@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import socket
 import ssl
 import subprocess
 import threading
@@ -128,8 +129,10 @@ def test_servidor_so_escuta_na_maquina_por_padrao():
 def test_abrir_para_a_rede_sem_tls_e_recusado(host):
     """Na rede, HTTP em claro deixa qualquer um no mesmo segmento assistir a
     câmera. Um aviso no terminal não protege ninguém; a recusa protege."""
+    painel = Painel()
+
     with pytest.raises(ValueError, match="--cert"):
-        Servidor(Painel(), host, 0)
+        Servidor(painel, host, 0)
 
 
 @pytest.fixture
@@ -176,8 +179,9 @@ def test_com_tls_o_estado_sai_cifrado(certificado):
         with urllib.request.urlopen(url, timeout=5.0, context=cliente) as resposta:
             assert json.loads(resposta.read()) == {"t": 3.0}
 
+        em_claro = f"http://127.0.0.1:{servidor.porta}/estado"
         with pytest.raises((urllib.error.URLError, ConnectionError, OSError)):
-            urllib.request.urlopen(f"http://127.0.0.1:{servidor.porta}/estado", timeout=5.0)
+            urllib.request.urlopen(em_claro, timeout=5.0)
     finally:
         servidor.encerra()
         thread.join(5.0)
@@ -192,11 +196,33 @@ def test_conexao_sem_tls_na_porta_cifrada_nao_vira_traceback(certificado, capsys
     thread = threading.Thread(target=servidor.serve_forever, args=(0.05,), daemon=True)
     thread.start()
     try:
+        em_claro = f"http://127.0.0.1:{servidor.porta}/estado"
         for _ in range(3):
             with pytest.raises((urllib.error.URLError, ConnectionError, OSError)):
-                urllib.request.urlopen(f"http://127.0.0.1:{servidor.porta}/estado", timeout=5.0)
+                urllib.request.urlopen(em_claro, timeout=5.0)
     finally:
         servidor.encerra()
         thread.join(5.0)
 
     assert "Traceback" not in capsys.readouterr().err
+
+
+def test_cliente_que_nao_negocia_nao_tira_a_tela_do_ar(certificado):
+    """Com o aperto de mão no `accept`, uma conexão aberta e muda travaria o
+    laço que aceita todas as outras -- a tela sairia do ar para todo mundo."""
+    cert, chave = certificado
+    painel = Painel()
+    painel.atualiza(np.zeros((24, 32, 3), np.uint8), {"t": 7.0})
+    servidor = Servidor(painel, "127.0.0.1", 0, tls=contexto_tls(cert, chave))
+    thread = threading.Thread(target=servidor.serve_forever, args=(0.05,), daemon=True)
+    thread.start()
+    mudo = socket.create_connection(("127.0.0.1", servidor.porta))
+    try:
+        cliente = ssl.create_default_context(cafile=str(cert))
+        url = f"https://127.0.0.1:{servidor.porta}/estado"
+        with urllib.request.urlopen(url, timeout=3.0, context=cliente) as resposta:
+            assert json.loads(resposta.read()) == {"t": 7.0}
+    finally:
+        mudo.close()
+        servidor.encerra()
+        thread.join(5.0)

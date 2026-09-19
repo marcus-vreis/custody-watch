@@ -21,7 +21,6 @@ rede, HTTP em claro é a câmera aberta para quem estiver no mesmo segmento.
 from __future__ import annotations
 
 import argparse
-import ssl
 import sys
 import threading
 import time
@@ -139,7 +138,7 @@ def main() -> int:
     try:
         plane = plane_from(args.calibration, args.metres_per_pixel)
         servidor = _servidor(args, painel)
-    except (ValueError, OSError, ssl.SSLError) as erro:
+    except (ValueError, OSError) as erro:  # ssl.SSLError é OSError
         print(erro, file=sys.stderr)
         return 1
     try:
