@@ -8,14 +8,20 @@ resolver um problema -- muitos espectadores remotos -- que uma sala de
 monitoramento não tem.
 
 Escuta só na própria máquina por padrão. É imagem de câmera de aeroporto:
-abrir para a rede é decisão explícita de quem roda, nunca um default.
+abrir para a rede é decisão explícita de quem roda, nunca um default -- e
+exige TLS. Na rede, HTTP em claro deixa qualquer um no mesmo segmento
+assistir a câmera, e um aviso no terminal não protege ninguém.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
+import ssl
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from .painel import Painel
@@ -27,6 +33,10 @@ FRONTEIRA = "quadro"
 QUADROS_POR_SEGUNDO_MAX = 15
 """Teto do vídeo que sai para cada aba. O processamento pode ir mais rápido;
 a tela não ganha nada com isso e cada aba aberta pagaria em rede."""
+
+HANDSHAKE_S = 10.0
+"""Prazo do aperto de mão TLS. Sem ele, uma conexão que abre e não negocia
+seguraria a thread dela para sempre."""
 
 REENVIO_S = 1.0
 """Quadro repetido quando nada muda. Sem escrita, uma aba fechada nunca vira
@@ -101,14 +111,75 @@ class _Atendente(BaseHTTPRequestHandler):
         segundo, e o terminal viraria só isso. Erro continua saindo."""
 
 
+def contexto_tls(certificado: Path | str, chave: Path | str) -> ssl.SSLContext:
+    """Contexto de servidor com o certificado de quem instala; TLS 1.2 no mínimo."""
+    contexto = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    contexto.minimum_version = ssl.TLSVersion.TLSv1_2
+    contexto.load_cert_chain(certificado, chave)
+    return contexto
+
+
+def so_nesta_maquina(host: str) -> bool:
+    """O endereço nunca sai da máquina? Nome que não seja `localhost` conta
+    como rede: resolver aqui para decidir seria confiar no DNS."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 class Servidor(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, painel: Painel, host: str = HOST_PADRAO, porta: int = PORTA_PADRAO) -> None:
+    def __init__(
+        self,
+        painel: Painel,
+        host: str = HOST_PADRAO,
+        porta: int = PORTA_PADRAO,
+        tls: ssl.SSLContext | None = None,
+    ) -> None:
+        if tls is None and not so_nesta_maquina(host):
+            raise ValueError(
+                f"recusado escutar em {host} sem TLS: na rede, HTTP em claro deixa "
+                f"qualquer um no mesmo segmento assistir a câmera. Passe --cert e --key"
+            )
         self.painel = painel
         self.encerrando = threading.Event()
         self._no_ar = threading.Event()
+        self._tls = tls
+        if ":" in host:
+            self.address_family = socket.AF_INET6
         super().__init__((host, porta), _Atendente)
+
+    @property
+    def cifrado(self) -> bool:
+        return self._tls is not None
+
+    def finish_request(self, request: socket.socket, client_address: tuple) -> None:
+        """Com TLS, o aperto de mão acontece aqui, na thread da conexão.
+
+        Fazê-lo no `accept` travaria o laço que aceita todas as outras: um
+        único cliente que abre a conexão e não negocia deixaria a tela fora
+        do ar para todo mundo.
+
+        Aperto de mão que falha termina calado. Uma aba esquecida em
+        `http://` consulta o estado duas vezes por segundo, e cada tentativa
+        virava um traceback inteiro no terminal; quem conectou errado já vê
+        o erro do lado dele.
+        """
+        if self._tls is None:
+            super().finish_request(request, client_address)
+            return
+        request.settimeout(HANDSHAKE_S)
+        try:
+            cifrada = self._tls.wrap_socket(request, server_side=True)
+        except OSError:  # ssl.SSLError e o prazo do aperto de mão são OSError
+            return
+        with cifrada:
+            cifrada.settimeout(None)
+            super().finish_request(cifrada, client_address)
 
     @property
     def porta(self) -> int:
@@ -326,4 +397,4 @@ atualiza();
 """
 
 
-__all__ = ["HOST_PADRAO", "PORTA_PADRAO", "Servidor"]
+__all__ = ["HOST_PADRAO", "PORTA_PADRAO", "Servidor", "contexto_tls", "so_nesta_maquina"]

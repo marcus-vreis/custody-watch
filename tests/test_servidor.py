@@ -1,6 +1,9 @@
 """O servidor da tela ao vivo: página, vídeo MJPEG e estado em JSON."""
 
 import json
+import shutil
+import ssl
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -9,7 +12,7 @@ import numpy as np
 import pytest
 
 from custody_watch.painel import Painel
-from custody_watch.servidor import Servidor
+from custody_watch.servidor import Servidor, contexto_tls
 
 
 @pytest.fixture
@@ -119,3 +122,81 @@ def test_servidor_so_escuta_na_maquina_por_padrao():
         assert servidor.server_address[0] == "127.0.0.1"
     finally:
         servidor.server_close()
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.0.10", "::", "camera.aeroporto.local"])
+def test_abrir_para_a_rede_sem_tls_e_recusado(host):
+    """Na rede, HTTP em claro deixa qualquer um no mesmo segmento assistir a
+    câmera. Um aviso no terminal não protege ninguém; a recusa protege."""
+    with pytest.raises(ValueError, match="--cert"):
+        Servidor(Painel(), host, 0)
+
+
+@pytest.fixture
+def certificado(tmp_path):
+    """Certificado descartável, gerado na hora -- nenhuma chave no repositório."""
+    if shutil.which("openssl") is None:
+        pytest.skip("openssl indisponível")
+    cert, chave = tmp_path / "cert.pem", tmp_path / "chave.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(chave),
+            "-out",
+            str(cert),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return cert, chave
+
+
+def test_com_tls_o_estado_sai_cifrado(certificado):
+    cert, chave = certificado
+    painel = Painel()
+    painel.atualiza(np.zeros((24, 32, 3), np.uint8), {"t": 3.0})
+    servidor = Servidor(painel, "127.0.0.1", 0, tls=contexto_tls(cert, chave))
+    thread = threading.Thread(target=servidor.serve_forever, args=(0.05,), daemon=True)
+    thread.start()
+    try:
+        cliente = ssl.create_default_context(cafile=str(cert))
+        url = f"https://127.0.0.1:{servidor.porta}/estado"
+        with urllib.request.urlopen(url, timeout=5.0, context=cliente) as resposta:
+            assert json.loads(resposta.read()) == {"t": 3.0}
+
+        with pytest.raises((urllib.error.URLError, ConnectionError, OSError)):
+            urllib.request.urlopen(f"http://127.0.0.1:{servidor.porta}/estado", timeout=5.0)
+    finally:
+        servidor.encerra()
+        thread.join(5.0)
+
+
+def test_conexao_sem_tls_na_porta_cifrada_nao_vira_traceback(certificado, capsys):
+    """Uma aba esquecida em http:// consulta o estado duas vezes por segundo.
+    Cada tentativa virava um traceback inteiro no terminal do operador; quem
+    conectou errado já vê o erro do lado dele."""
+    cert, chave = certificado
+    servidor = Servidor(Painel(), "127.0.0.1", 0, tls=contexto_tls(cert, chave))
+    thread = threading.Thread(target=servidor.serve_forever, args=(0.05,), daemon=True)
+    thread.start()
+    try:
+        for _ in range(3):
+            with pytest.raises((urllib.error.URLError, ConnectionError, OSError)):
+                urllib.request.urlopen(f"http://127.0.0.1:{servidor.porta}/estado", timeout=5.0)
+    finally:
+        servidor.encerra()
+        thread.join(5.0)
+
+    assert "Traceback" not in capsys.readouterr().err

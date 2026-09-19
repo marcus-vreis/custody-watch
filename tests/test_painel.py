@@ -64,7 +64,8 @@ def test_quadro_anotado_marca_quem_esta_na_fila():
 
     assert anotado.shape == quadro.shape
     vermelho = anotado[300, 350]
-    assert vermelho[2] > 150 and vermelho[1] < 100
+    assert vermelho[2] > 150
+    assert vermelho[1] < 100
 
 
 def test_painel_guarda_o_ultimo_quadro_e_o_ultimo_estado():

@@ -161,8 +161,8 @@ class CameraAoVivo:
 
         while True:
             with self._cond:
-                while not self._cond.wait_for(pronto, timeout=self.ESPERA_S):
-                    pass
+                while not pronto():
+                    self._cond.wait(self.ESPERA_S)
                 if self._parar.is_set() or not novo():
                     return
                 indice, t, imagem = self._ultimo
