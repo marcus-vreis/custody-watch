@@ -99,6 +99,12 @@ class EventLog:
     def __iter__(self) -> Iterator[Event]:
         return iter(self._events)
 
+    def __reversed__(self) -> Iterator[Event]:
+        """Do mais recente para o mais antigo. A tela ao vivo quer só a
+        cauda, e copiar o log inteiro a cada quadro custaria cada vez mais
+        numa câmera que roda por dias."""
+        return reversed(self._events)
+
     def __len__(self) -> int:
         return len(self._events)
 
