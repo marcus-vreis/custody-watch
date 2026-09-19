@@ -2,11 +2,11 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. 385 tests, CI green.
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. 397 tests, CI green.
 >
-> **It has now seen a theft, and found it.** Not a real one — a 40-second gate-area distraction theft generated with Veo. The system named the thief, the right bag and the right owner group, about two seconds after the bag started moving. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
+> **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
-> **It has still never seen a real theft.** No public dataset with one is still online — see [Evaluation](#evaluation).
+> **On real staged thefts, it missed all four.** MEVA has four annotated bag thefts on real cameras, and the detector never saw any of the four bags at rest — so no custody ever existed to lose. False accusations on the same footage went to zero. See [Real footage](#real-footage-meva-and-ucf-crime).
 
 ## What this is
 
@@ -232,6 +232,45 @@ Two seconds after the bag started moving, across two tracker ID switches that an
 
 **What it does not prove.** One staged clip is one sample, and a generated one: no real sensor noise, no compression artefacts, no crowd. The false alarms that remain in that run are all bags in the *background*, which a uniform scale reads as standing still — a calibration failure, not a logic one, and the reason the tool now refuses to stay quiet about it. The theft survives a 5× range of scale error. The noise does not.
 
+## Real footage: MEVA and UCF-Crime
+
+[MEVA](https://mevadata.org/) is the dataset behind the NIST ActEV challenge — the same programme whose `P_miss @ RFA` metric this project uses. It is staged by actors, on real cameras, CC BY 4.0. Of its 2,212 annotated clips, **four contain a bag being stolen and one a bag being abandoned**. [UCF-Crime](https://www.crcv.ucf.edu/projects/real-world/) is 1,900 unfiltered surveillance videos; searching all 23,542 sentences of its [UCA](https://github.com/Xuange923/Surveillance-Video-Understanding) descriptions, one involves a suitcase.
+
+| clip | what happens | did the detector see the bag? | result |
+|---|---|---|---|
+| UCF-Crime `Stealing057` | someone rifles through a suitcase left in a waiting hall | yes | right owner, unattended at the right time; the man rifling through it gets no flag (#49) |
+| MEVA bus 13:15 | bag theft | **no** — cut off by the bottom of the frame | missed |
+| MEVA school G421 | bag theft | **no** — dark, against the light | missed |
+| MEVA bus 14:55 | bag theft | **no** — dark bag on a dark bench | missed |
+| MEVA bus 15:10 | bag theft | **no** | missed |
+| MEVA bus 15:15 | abandonment | yes | not recognised as abandonment; the person who left it gets a contact flag at the right moment |
+
+**`P_miss` on real bag thefts: 4 of 4.** Not one of them reached the logic. At minimum confidence, YOLO does see *something* where each bag sits — at 1–9%, confused with a chair, a bench, a laptop. Lowering the threshold would make the chairs luggage too.
+
+### The false accusations were the logic's, and are gone
+
+The same footage produced five false top-severity accusations, and all five were bags passing the rest test without having been put down:
+
+- **cut off by the frame border** — the foot of the box becomes the edge of the image, so the projection never moves. One of these made the thief the owner of the bag he was carrying.
+- **too small** — below 40 px a bag's position on the floor is detector noise
+- **carried** — a backpack on someone standing still stands still too. Stopping is not depositing.
+
+Each is now a veto on becoming an anchor, answered in pixels before projection (#48). **Five false accusations became zero**, and on the generated clip the thief became the only top-severity item at the scale used all along.
+
+### A better detector sees the bags, and still does not catch the thefts
+
+On the 32 frames before the four thefts, at a matched level of extra detections:
+
+| detector | bag found | thefts where the bag is seen | CPU time per frame |
+|---|---|---|---|
+| YOLO26s (current) | 1/32 | 1/4 | 0.09 s |
+| YOLO26x | up to 11/32 | 2/4 | 0.46 s |
+| OWLv2, open vocabulary | 19/32 | 4/4 | 4.30 s |
+
+OWLv2 sees the bags. Plugged into the pipeline it still catches none of the thefts, and adds false accusations — sampled every 2 s it fabricates stillness between samples, and even at 5 frames a second the bag flickers around threshold at rest, vanishes at the moment it is picked up, and jumps too far between frames once carried for anything to connect it back to its anchor. The measurements are in #51.
+
+On this footage the gap is not one component. It is the handover between *seeing a bag sit* and *seeing the same bag leave*, and that handover is where the next work is.
+
 ## Evaluation
 
 Not mAP. **P_miss @ RFA** (miss probability at a given false-alarm rate per minute), the NIST ActEV standard for this problem family, plus ranking quality — where the true event lands in the queue.
@@ -311,7 +350,7 @@ Ownership was decided in the single frame where a bag first appeared. The noise 
 
 Both ends come from the same assumption, and fixing it meant stating what the registry is for: **it holds anchors, and ownership is the deposit.** A bag enters after it stays put; whoever was within reach when it arrived owns it. Chasing the owner afterwards would have reopened the attack rule P1 exists to close — a thief who walks up to an unclaimed bag becoming its legitimate owner — so the window that lets the system keep asking is bounded, and the answer it keeps is the one from the moment the bag arrived.
 
-**Closing the gap still needs staged footage with real thefts in it.** One generated clip is one sample, with none of a real sensor's noise. That is the blocker, and it is not a code problem.
+**Real footage with thefts in it now exists in the loop**, and it moved the blocker. Four staged thefts on real cameras were all lost before the logic saw them — see [Real footage](#real-footage-meva-and-ucf-crime).
 
 One requirement for that footage came out of the measurement, and would not have been guessed: the camera has to keep rolling for `max_occlusion_s` **after the bag leaves frame** — 30 s by default — and not merely for `unattended_time_s` after the abandonment. A scene that ends when the bag does produces an unresolvable event rather than a measurable one.
 
