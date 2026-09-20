@@ -106,3 +106,15 @@ def test_caixa_engrossa_com_a_resolucao():
     grossa = _espessura_da_borda(grande, 350, 290, 330)
     assert fina >= 1
     assert grossa >= 2 * fina
+
+
+def test_bagagem_apontada_aparece_no_quadro():
+    """Ela não tem caixa de detector: sem desenhá-la pelo pixel apontado, o
+    operador não tem como saber se o clique dele pegou."""
+    sessao = _sessao_com_furto()
+    sessao.aponta_bagagem(800.0, 700.0)
+
+    anotado = desenha(np.zeros((1200, 1600, 3), np.uint8), [], sessao)
+
+    vizinhanca = anotado[660:740, 760:840]
+    assert vizinhanca.any()

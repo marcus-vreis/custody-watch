@@ -72,7 +72,12 @@ class BagRegistry:
     def all(self) -> list[Bag]:
         return list(self._bags.values())
 
-    def observe(self, observation: Observation, events: EventLog | None = None) -> Bag:
+    def observe(
+        self,
+        observation: Observation,
+        events: EventLog | None = None,
+        evidence: dict | None = None,
+    ) -> Bag:
         """Registra ou atualiza uma bagagem.
 
         Movimento sub-limiar não move a âncora: jitter de detector não deve ser
@@ -101,7 +106,7 @@ class BagRegistry:
                         subject=None,
                         bag=bag.bag_id,
                         party=bag.owner_party,
-                        evidence={"anchor": [bag.anchor.x, bag.anchor.y]},
+                        evidence={"anchor": [bag.anchor.x, bag.anchor.y], **(evidence or {})},
                     )
                 )
             return bag
@@ -123,6 +128,7 @@ class BagRegistry:
         party_id: int,
         t: float = 0.0,
         events: EventLog | None = None,
+        evidence: dict | None = None,
     ) -> None:
         """Vinculação por back-tracing: quem depositou a bagagem.
 
@@ -140,7 +146,7 @@ class BagRegistry:
                     subject=None,
                     bag=bag_id,
                     party=party_id,
-                    evidence={"party": party_id},
+                    evidence={"party": party_id, **(evidence or {})},
                 )
             )
 

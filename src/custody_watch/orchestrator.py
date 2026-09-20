@@ -54,6 +54,7 @@ regra P3 se sobrou zero ou mais de um candidato.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from itertools import combinations
@@ -70,6 +71,7 @@ from .reid import TrackLinker
 from .tracking import PlausibilityGate, TrackedDetection, anchor_vetoes, to_observations
 from .types import (
     BAG_CLASSES,
+    PERSON_CLASS,
     TERMINAL_BAG_STATES,
     Bag,
     BagState,
@@ -77,6 +79,31 @@ from .types import (
     Observation,
     Point,
 )
+
+MAX_APONTADAS = 200
+"""Teto de bagagens apontadas pelo operador. Um cliente em laço criaria
+âncoras até o processo cair, e nenhuma sala de monitoramento aponta duzentas
+bagagens numa sessão."""
+
+BAG_APONTADA = "suitcase"
+"""Classe da observação que o operador cria. O registro não guarda classe --
+bagagem é bagagem -- mas a observação precisa de uma que seja de bagagem para
+ser coerente com o resto do pipeline."""
+
+
+def _quem_esta_em(tracked: Iterable[TrackedDetection], px: float, py: float) -> int | None:
+    """Quem o operador clicou. A menor caixa que contém o ponto: com duas
+    pessoas sobrepostas, a de trás contém a da frente, e a resposta certa é a
+    que o operador enxergou -- a menor."""
+    candidatos = [
+        d
+        for d in tracked
+        if d.cls == PERSON_CLASS and d.bbox[0] <= px <= d.bbox[2] and d.bbox[1] <= py <= d.bbox[3]
+    ]
+    if not candidatos:
+        return None
+    menor = min(candidatos, key=lambda d: (d.bbox[2] - d.bbox[0]) * (d.bbox[3] - d.bbox[1]))
+    return menor.track_id
 
 
 @dataclass
@@ -675,6 +702,27 @@ class _Session:
         self.registry.assign_owner(
             bag.bag_id, self.party_for(carrier.track_id), t=self.t, events=self.events
         )
+        self.esquece_contatos_do_dono(bag)
+
+    def esquece_contatos_do_dono(self, bag: Bag) -> None:
+        """Quem virou dono não é estranho a esta bagagem.
+
+        A posse pode chegar depois do contato -- por `claim_ownership`, que
+        tenta a cada quadro enquanto a bagagem é órfã, ou pelo operador, que
+        aponta a bagagem primeiro e o dono depois. Medido no MEVA com a tela
+        ao vivo: a dona da bolsa apontada entrou na fila em primeiro lugar,
+        por tocar na própria bolsa nos segundos entre os dois cliques.
+        """
+        if bag.owner_party is None:
+            return
+        for pessoa in self.flags.people():
+            if self.parties.party_of(pessoa) == bag.owner_party:
+                self.flags.drop(pessoa, bag.bag_id)
+        self.contact_flagged = {
+            (pessoa, bagagem)
+            for pessoa, bagagem in self.contact_flagged
+            if bagagem != bag.bag_id or self.parties.party_of(pessoa) != bag.owner_party
+        }
 
     def observe_bags(self, bags: list[Observation], people: list[Observation]) -> set[int]:
         seen: set[int] = set()
@@ -697,6 +745,9 @@ class _Session:
             bag = self.registry.observe(observation, events=self.events)
             seen.add(bag.bag_id)
             self.missing.pop(bag.bag_id, None)
+            # O detector enfim a viu: a partir daqui o silêncio dele volta a
+            # significar alguma coisa sobre ela.
+            bag.apontada = False
             self.end_occlusion(bag)
             bag.moved_since = None
             self.claim_ownership(bag, people)
@@ -755,6 +806,13 @@ class _Session:
             update_attendance(
                 bag, people, self.parties, self.t, self.config.custody, events=self.events
             )
+
+            if bag.apontada:
+                # O detector nunca viu esta bagagem -- foi por isso que alguém
+                # a apontou. Ele seguir sem ver não é notícia, e resolver esse
+                # silêncio por prazo declararia AMBIGUA toda âncora apontada
+                # trinta segundos depois do clique.
+                continue
 
             if bag.bag_id in seen:
                 continue
@@ -843,8 +901,18 @@ class LiveSession:
     def __init__(self, plane: GroundPlane, config: Config | None = None) -> None:
         self._plane = plane
         self._s = _Session(plane, config or Config())
+        self._trava = threading.Lock()
+        """Apontar vem da thread do HTTP; alimentar vem da do detector. Sem a
+        trava, um clique no meio de um quadro leria um registro pela metade."""
+        self._apontadas: dict[int, tuple[float, float]] = {}
+        self._ultimo_tracked: list[TrackedDetection] = []
 
     def feed(self, t: float, tracked: list[TrackedDetection]) -> None:
+        with self._trava:
+            self._ultimo_tracked = list(tracked)
+            self._alimenta(t, tracked)
+
+    def _alimenta(self, t: float, tracked: list[TrackedDetection]) -> None:
         s = self._s
         pipeline = s.config.pipeline
         s.frames += 1
@@ -897,6 +965,86 @@ class LiveSession:
 
     def canonical_person(self, track_id: int) -> int:
         return self._s.linker.links().get(track_id, track_id)
+
+    def party_of(self, track_id: int) -> int | None:
+        return self._s.parties.party_of(self.canonical_person(track_id))
+
+    # --- apontar --------------------------------------------------------
+
+    def aponta_bagagem(self, px: float, py: float) -> Bag:
+        """O operador diz que ali no chão tem uma bagagem.
+
+        Existe porque o detector não vê: medido no MEVA, nos 90s em que cada
+        bolsa furtada fica parada antes do furto, sai zero caixa de bagagem
+        sobre ela -- e nem modelo maior nem recorte ampliado mudam isso. Numa
+        sala de monitoramento tem alguém olhando a tela, e o que falta não é
+        modelo, é a informação de que aquilo é uma bagagem.
+
+        Nasce **órfã**, e é aqui que a regra P1 não abre exceção para humano:
+        apontar diz onde, não de quem. Dar posse a quem está mais perto é o
+        ataque que P1 fecha -- quem está sentado ao lado da bagagem parada
+        pode ser exatamente quem vai levá-la.
+
+        `px`, `py` são o pixel clicado, e valem o pé da bagagem: é onde ela
+        toca o chão, que é o que o plano projeta.
+        """
+        with self._trava:
+            if len(self._apontadas) >= MAX_APONTADAS:
+                raise ValueError(
+                    f"já há {len(self._apontadas)} bagagens apontadas, o teto é {MAX_APONTADAS}"
+                )
+
+            s = self._s
+            posicao = self._plane.project(px, py)
+            observacao = Observation(
+                track_id=self._proximo_id_apontado(), cls=BAG_APONTADA, position=posicao, t=s.t
+            )
+            bag = s.registry.observe(observacao, events=s.events, evidence={"origem": "operador"})
+            bag.apontada = True
+            bag.occluded_since = s.t
+            """Invisível desde que nasceu, porque é verdade: é a informação
+            que faz a regra P3 suprimir o desacompanhamento quando o dono
+            também sai de quadro."""
+            self._apontadas[bag.bag_id] = (px, py)
+            return bag
+
+    def aponta_dono(self, bag_id: int, px: float, py: float) -> Bag:
+        """O operador diz de quem é a bagagem, apontando a pessoa.
+
+        Recusa quando não há ninguém no ponto: sem alguém ali não há a quem
+        atribuir, e inventar um dono é fabricar justamente a evidência que
+        separa furto de retirada legítima.
+        """
+        with self._trava:
+            s = self._s
+            bag = next((b for b in s.registry.all() if b.bag_id == bag_id), None)
+            if bag is None:
+                raise ValueError(f"bagagem {bag_id} não existe")
+
+            dono = _quem_esta_em(self._ultimo_tracked, px, py)
+            if dono is None:
+                raise ValueError(f"ninguém no ponto ({px:.0f}, {py:.0f})")
+
+            s.registry.assign_owner(
+                bag.bag_id,
+                s.party_for(self.canonical_person(dono)),
+                t=s.t,
+                events=s.events,
+                evidence={"origem": "operador"},
+            )
+            s.esquece_contatos_do_dono(bag)
+            return bag
+
+    def apontadas(self) -> dict[int, tuple[float, float]]:
+        """Onde desenhar cada bagagem apontada: ela não tem caixa de detector,
+        e sem o pixel ficaria invisível para quem a apontou."""
+        with self._trava:
+            return dict(self._apontadas)
+
+    def _proximo_id_apontado(self) -> int:
+        """Ids negativos: o espaço dos positivos é do detector, e colidir com
+        um track faria a bagagem apontada ser confundida com uma detecção."""
+        return min(self._apontadas, default=0) - 1
 
     def person_level(self, track_id: int) -> FlagLevel | None:
         """O nível mais alto já sinalizado para a pessoa por trás deste track."""
