@@ -102,6 +102,29 @@ def perspective_ratio(person_heights: Sequence[float]) -> float:
     return frente / fundo if fundo > 0.0 else 1.0
 
 
+def uniform_scale_warning(person_heights: Sequence[float]) -> str | None:
+    """A cena é descritível por uma escala uniforme? Se não, a frase que diz.
+
+    Pergunta que só faz sentido quando a escala veio de `metres_per_pixel`:
+    uma homografia medida trata a perspectiva, que é para isso que ela existe.
+
+    Sem este aviso o erro é silencioso, que é o modo de falha que este projeto
+    mais teme em plano do chão -- nada quebra, os números só passam a
+    descrever outra cena.
+    """
+    razao = perspective_ratio(person_heights)
+    if razao <= MAX_UNIFORM_SCALE_RATIO:
+        return None
+
+    return (
+        f"AVISO: a altura das pessoas varia {razao:.1f}x entre o fundo e o primeiro "
+        f"plano. Uma escala uniforme não descreve esta cena: no fundo, bagagem "
+        f"sendo puxada anda devagar demais em metros, passa no teste de repouso e "
+        f"vira âncora parada -- e de âncora falsa saem acusações. Meça quatro "
+        f"pontos no chão e use --calibration."
+    )
+
+
 def load_calibration(path: Path | str) -> Calibration:
     # O caminho vem da linha de comando. Resolver antes de abrir tira o
     # relativo e o `..` do meio, e a checagem de arquivo comum transforma

@@ -65,6 +65,16 @@ uv run python scripts/watch_video.py scene.mp4 --metres-per-pixel 0.0085
 
 A uniform scale now says when it cannot describe the scene. If the people in frame differ in height by more than 2×, the view has perspective, the background is compressed past every distance threshold, and the run warns with the measured ratio. Both scenes this project has seen fail that test: CAVIAR at 3.3×, the gate clip at 11.3×.
 
+Or watch it live. `watch_video.py` shows nothing until the file ends, and a camera has no end; this serves the annotated video, the operator's queue and the custody events to a browser while the scene is still happening:
+
+```bash
+uv run python scripts/serve.py scene.mp4 --metres-per-pixel 0.006 --passo 2
+uv run python scripts/serve.py 0 --calibration ground.json
+uv run python scripts/serve.py rtsp://camera/stream --calibration ground.json
+```
+
+and open `http://localhost:8765`. A file is processed without loss, on its own clock — `--passo N` skips frames without shrinking time. A camera (index or URL) always hands over the newest frame, timed by the wall clock: processing every frame of a camera faster than the detector would drift further behind for the whole shift. It listens on this machine only. Listening beyond it with `--host` is refused without `--cert` and `--key`: plain HTTP on a network is the camera open to anyone on the same segment, and a warning in the terminal protects no one. On the gate clip, CPU only, `--passo 2` runs at about real time and the thief is the only N3, ranked first, and reaches the screen while the clip is still playing — not after it ends.
+
 Fetch the dataset (~192 MB) and measure:
 
 ```bash
@@ -121,7 +131,10 @@ uv run python scripts/build_report.py
 | `flags.py` | Relational flags, exponential decay |
 | `alerts.py` | Ranked queue, clip window, explanation |
 | `events.py` | Events as serialisable intervals, JSONL |
-| `orchestrator.py` | Wires it together; consumes frames, emits a queue |
+| `orchestrator.py` | Wires it together; consumes frames, emits a queue — in batch or one frame at a time |
+| `aovivo.py` | The live loop: file on its own clock, camera always on its newest frame |
+| `painel.py` | What the live screen shows: queue, custody events, annotated frame |
+| `servidor.py` | Standard-library HTTP: the page, MJPEG video, state as JSON |
 | `clips.py` | Annotated GIF cut around the gravest signal |
 | `report.py` | The operator's review page |
 | `review.py` | Queue, clip and page composed — including the identity translation between them |
