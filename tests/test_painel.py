@@ -87,3 +87,22 @@ def test_eventos_da_tela_sao_so_os_de_custodia():
     tipos = {e["tipo"] for e in atual["eventos"]}
     assert "bag_removed_by_stranger" in tipos
     assert all(tipo.startswith("bag_") for tipo in tipos)
+
+
+def _espessura_da_borda(quadro, x: int, y0: int, y1: int) -> int:
+    return sum(1 for y in range(y0, y1) if quadro[y, x].any())
+
+
+def test_caixa_engrossa_com_a_resolucao():
+    """A 1080p, uma borda de três pixels some quando a tela mostra o quadro
+    reduzido: no primeiro clipe MEVA na tela não dava para ver caixa nenhuma."""
+    sessao = _sessao_com_furto()
+    caixa = TrackedDetection(sessao.queue()[0].person, "person", (300.0, 300.0, 400.0, 600.0))
+
+    pequeno = desenha(np.zeros((360, 640, 3), np.uint8), [caixa], sessao)
+    grande = desenha(np.zeros((1080, 1920, 3), np.uint8), [caixa], sessao)
+
+    fina = _espessura_da_borda(pequeno, 350, 290, 330)
+    grossa = _espessura_da_borda(grande, 350, 290, 330)
+    assert fina >= 1
+    assert grossa >= 2 * fina
