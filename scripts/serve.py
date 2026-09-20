@@ -82,7 +82,7 @@ def _argumentos() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _servidor(args: argparse.Namespace, painel: Painel) -> Servidor:
+def _servidor(args: argparse.Namespace, painel: Painel, sessao: LiveSession) -> Servidor:
     """Validado antes de abrir câmera ou carregar modelo: uma recusa por falta
     de TLS não pode custar trinta segundos de carga para aparecer."""
     if (args.cert is None) != (args.key is None):
@@ -91,7 +91,7 @@ def _servidor(args: argparse.Namespace, painel: Painel) -> Servidor:
         if arquivo is not None and not arquivo.is_file():
             raise ValueError(f"{arquivo}: arquivo TLS não encontrado")
     tls = contexto_tls(args.cert, args.key) if args.cert is not None else None
-    return Servidor(painel, args.host, args.porta, tls=tls)
+    return Servidor(painel, args.host, args.porta, tls=tls, sessao=sessao)
 
 
 def _fonte(args: argparse.Namespace, parar: threading.Event):
@@ -135,9 +135,11 @@ def main() -> int:
     args = _argumentos()
     parar = threading.Event()
     painel = Painel()
+    config = load_config(args.config) if args.config else Config()
     try:
         plane = plane_from(args.calibration, args.metres_per_pixel)
-        servidor = _servidor(args, painel)
+        sessao = LiveSession(plane, config)
+        servidor = _servidor(args, painel, sessao)
     except (ValueError, OSError) as erro:  # ssl.SSLError é OSError
         print(erro, file=sys.stderr)
         return 1
@@ -148,11 +150,9 @@ def main() -> int:
         servidor.server_close()
         return 1
 
-    config = load_config(args.config) if args.config else Config()
     threading.Thread(target=servidor.serve_forever, daemon=True, name="servidor").start()
     _anuncia(args, servidor, ao_vivo=camera is not None)
 
-    sessao = LiveSession(plane, config)
     try:
         processa(
             quadros,
