@@ -121,6 +121,13 @@ def _cor_e_rotulo(
     return CINZA, "", 1
 
 
+ALTURA_DE_REFERENCIA = 360.0
+"""Altura em que a borda de um pixel por nível já se vê. Acima dela, traço e
+letra crescem junto com o quadro: a tela mostra 1920px reduzidos à largura do
+navegador, e uma borda de três pixels em 1080p sumiu por completo no primeiro
+clipe MEVA que rodou aqui."""
+
+
 def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSession) -> np.ndarray:
     """O quadro com as caixas coloridas pelo que a lógica decidiu.
 
@@ -129,13 +136,22 @@ def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSes
     olha primeiro, e cor demais é o mesmo que nenhuma.
     """
     anotado = quadro.copy()
+    escala = max(1.0, anotado.shape[0] / ALTURA_DE_REFERENCIA)
     for det in tracked:
         cor, rotulo, espessura = _cor_e_rotulo(det, sessao)
+        traco = max(1, int(round(espessura * escala)))
         x0, y0, x1, y1 = (int(round(v)) for v in det.bbox)
-        cv2.rectangle(anotado, (x0, y0), (x1, y1), cor, espessura)
+        cv2.rectangle(anotado, (x0, y0), (x1, y1), cor, traco)
         if rotulo:
+            altura_letra = int(round(12 * escala))
             cv2.putText(
-                anotado, rotulo, (x0, max(12, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2
+                anotado,
+                rotulo,
+                (x0, max(altura_letra, y0 - traco - 2)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5 * escala,
+                cor,
+                max(1, int(round(2 * escala))),
             )
     return anotado
 
