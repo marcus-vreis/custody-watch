@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .orchestrator import LiveSession
 from .painel import Painel
 
 HOST_PADRAO = "127.0.0.1"
@@ -41,6 +42,11 @@ seguraria a thread dela para sempre."""
 REENVIO_S = 1.0
 """Quadro repetido quando nada muda. Sem escrita, uma aba fechada nunca vira
 erro de socket, e a thread dela ficaria esperando para sempre."""
+
+CORPO_MAX = 4096
+"""Teto do corpo de um POST. São dois números e um id; qualquer coisa maior é
+engano ou abuso, e ler o que o cliente mandar é como se enche a memória de um
+processo que roda por dias."""
 
 
 class _Atendente(BaseHTTPRequestHandler):
@@ -64,6 +70,54 @@ class _Atendente(BaseHTTPRequestHandler):
             self._video()
         else:
             self._envia(404, "text/plain; charset=utf-8", "não existe".encode())
+
+    def do_POST(self) -> None:
+        """Apontar: o operador diz o que o detector não vê.
+
+        As duas rotas recebem o clique em **fração do quadro**, porque o
+        navegador mostra a imagem reduzida e pixel de tela apontaria outro
+        lugar da cena.
+        """
+        rota = urlsplit(self.path).path
+        if rota not in ("/ancora", "/dono"):
+            self._envia(404, "text/plain; charset=utf-8", "não existe".encode())
+            return
+
+        sessao = self.server.sessao
+        if sessao is None:
+            self._recusa(409, "esta tela não tem sessão ao vivo para apontar")
+            return
+        tamanho = self.server.painel.tamanho()
+        if tamanho is None:
+            self._recusa(503, "nenhum quadro ainda")
+            return
+
+        try:
+            pedido = self._corpo()
+            px, py = _ponto(pedido, tamanho)
+            if rota == "/ancora":
+                bagagem = sessao.aponta_bagagem(px, py)
+            else:
+                bagagem = sessao.aponta_dono(int(pedido["bagagem"]), px, py)
+        except (ValueError, KeyError, TypeError) as erro:
+            self._recusa(400, str(erro) or "pedido inválido")
+            return
+
+        corpo = json.dumps({"bagagem": bagagem.bag_id}, ensure_ascii=False).encode("utf-8")
+        self._envia(200, "application/json; charset=utf-8", corpo)
+
+    def _corpo(self) -> dict:
+        tamanho = int(self.headers.get("Content-Length") or 0)
+        if tamanho <= 0 or tamanho > CORPO_MAX:
+            raise ValueError(f"corpo de {tamanho} bytes; o teto é {CORPO_MAX}")
+        pedido = json.loads(self.rfile.read(tamanho))
+        if not isinstance(pedido, dict):
+            raise ValueError("esperado um objeto JSON")
+        return pedido
+
+    def _recusa(self, codigo: int, motivo: str) -> None:
+        corpo = json.dumps({"erro": motivo}, ensure_ascii=False).encode("utf-8")
+        self._envia(codigo, "application/json; charset=utf-8", corpo)
 
     def _envia(self, codigo: int, tipo: str, corpo: bytes) -> None:
         self.send_response(codigo)
@@ -130,6 +184,16 @@ def so_nesta_maquina(host: str) -> bool:
         return False
 
 
+def _ponto(pedido: dict, tamanho: tuple[float, float]) -> tuple[float, float]:
+    """A fração clicada vira pixel do quadro. Fora de [0,1] é engano: o clique
+    saiu da imagem, e projetar isso apontaria um lugar que a câmera não vê."""
+    largura, altura = tamanho
+    x, y = float(pedido["x"]), float(pedido["y"])
+    if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+        raise ValueError(f"clique fora do quadro: ({x}, {y})")
+    return x * largura, y * altura
+
+
 class Servidor(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -139,6 +203,7 @@ class Servidor(ThreadingHTTPServer):
         host: str = HOST_PADRAO,
         porta: int = PORTA_PADRAO,
         tls: ssl.SSLContext | None = None,
+        sessao: LiveSession | None = None,
     ) -> None:
         if tls is None and not so_nesta_maquina(host):
             raise ValueError(
@@ -146,6 +211,9 @@ class Servidor(ThreadingHTTPServer):
                 f"qualquer um no mesmo segmento assistir a câmera. Passe --cert e --key"
             )
         self.painel = painel
+        self.sessao = sessao
+        """A sessão ao vivo, quando existe. Sem ela a tela é só leitura: uma
+        gravação já encerrada não pode ganhar âncora nenhuma."""
         self.encerrando = threading.Event()
         self._no_ar = threading.Event()
         self._tls = tls
@@ -236,6 +304,17 @@ header h1 { font-size: 16px; margin: 0; font-weight: 600; }
 .medida { color: var(--suave); font-variant-numeric: tabular-nums; }
 .medida b { color: var(--texto); font-weight: 600; }
 #conexao { margin-left: auto; font-size: 12px; color: var(--suave); }
+.barra { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.barra button {
+  font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--borda); background: var(--painel); color: var(--texto);
+}
+.barra button[aria-pressed="true"] {
+  border-color: var(--ancora); color: var(--ancora); font-weight: 600;
+}
+#instrucao { color: var(--suave); font-size: 13px; }
+#instrucao.erro { color: var(--n3); }
+#video.apontando { cursor: crosshair; }
 #conexao.caiu { color: var(--n3); font-weight: 600; }
 main {
   display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 16px;
@@ -284,7 +363,14 @@ tr.estranho td { color: var(--n3); font-weight: 600; }
 </header>
 <div id="avisos"></div>
 <main>
-  <div><img id="video" src="/video" alt="vídeo anotado ao vivo"></div>
+  <div>
+    <div class="barra">
+      <button id="btn-bagagem" type="button" aria-pressed="false">Apontar bagagem</button>
+      <button id="btn-dono" type="button" aria-pressed="false" disabled>Apontar dono</button>
+      <span id="instrucao"></span>
+    </div>
+    <img id="video" src="/video" alt="vídeo anotado ao vivo">
+  </div>
   <div>
     <section>
       <h2>Fila do operador</h2>
@@ -387,7 +473,71 @@ async function atualiza() {
   setTimeout(atualiza, 500);
 }
 
+// Apontar: o detector não vê tudo, e quem está olhando a tela vê.
 const video = document.getElementById("video");
+const instrucao = document.getElementById("instrucao");
+const btnBagagem = document.getElementById("btn-bagagem");
+const btnDono = document.getElementById("btn-dono");
+let modo = null;
+let ultimaBagagem = null;
+
+function diz(texto, erro) {
+  instrucao.textContent = texto;
+  instrucao.className = erro ? "erro" : "";
+}
+
+function modoAponta(novo) {
+  modo = modo === novo ? null : novo;
+  btnBagagem.setAttribute("aria-pressed", String(modo === "bagagem"));
+  btnDono.setAttribute("aria-pressed", String(modo === "dono"));
+  video.classList.toggle("apontando", modo !== null);
+  if (modo === "bagagem") diz("Clique no pé da bagagem, onde ela toca o chão.");
+  else if (modo === "dono") diz("Clique na pessoa dona da bagagem " + ultimaBagagem + ".");
+  else diz("");
+}
+
+async function aponta(rota, carga) {
+  const r = await fetch(rota, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(carga),
+  });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(corpo.erro || "recusado");
+  return corpo;
+}
+
+video.addEventListener("click", async (evento) => {
+  if (!modo) return;
+  const area = video.getBoundingClientRect();
+  const carga = {
+    x: (evento.clientX - area.left) / area.width,
+    y: (evento.clientY - area.top) / area.height,
+  };
+  try {
+    if (modo === "bagagem") {
+      const corpo = await aponta("/ancora", carga);
+      ultimaBagagem = corpo.bagagem;
+      btnDono.disabled = false;
+      modo = null;
+      modoAponta("dono");
+    } else {
+      carga.bagagem = ultimaBagagem;
+      const corpo = await aponta("/dono", carga);
+      modoAponta(null);
+      diz("Bagagem " + corpo.bagagem + " com dono.");
+    }
+  } catch (erro) {
+    diz(erro.message, true);
+  }
+});
+
+btnBagagem.addEventListener("click", () => modoAponta("bagagem"));
+btnDono.addEventListener("click", () => modoAponta("dono"));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && modo) modoAponta(null);
+});
+
 // O servidor caiu ou reiniciou: tenta de novo, sem recarregar a página.
 video.addEventListener("error", () => {
   setTimeout(() => { video.src = "/video?" + Date.now(); }, 1000);

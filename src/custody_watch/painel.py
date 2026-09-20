@@ -121,11 +121,42 @@ def _cor_e_rotulo(
     return CINZA, "", 1
 
 
+RAIO_APONTADA = 14
+"""Raio do círculo que marca a bagagem apontada, em pixels de 360p."""
+
 ALTURA_DE_REFERENCIA = 360.0
 """Altura em que a borda de um pixel por nível já se vê. Acima dela, traço e
 letra crescem junto com o quadro: a tela mostra 1920px reduzidos à largura do
 navegador, e uma borda de três pixels em 1080p sumiu por completo no primeiro
 clipe MEVA que rodou aqui."""
+
+
+def _desenha_apontadas(anotado: np.ndarray, sessao: LiveSession, escala: float) -> None:
+    """A bagagem que o operador apontou não tem caixa de detector.
+
+    Sem desenhá-la no pixel apontado, quem clicou não tem como saber se o
+    clique pegou -- e a âncora mais importante da tela seria a única
+    invisível.
+    """
+    ancoradas = {b.bag_id: b for b in sessao.anchors()}
+    raio = int(round(RAIO_APONTADA * escala))
+    for bag_id, (px, py) in sessao.apontadas().items():
+        bagagem = ancoradas.get(bag_id)
+        if bagagem is None:
+            continue
+        centro = (int(round(px)), int(round(py)))
+        cv2.circle(anotado, centro, raio, AZUL, max(1, int(round(2 * escala))))
+        cv2.drawMarker(anotado, centro, AZUL, cv2.MARKER_CROSS, raio, max(1, int(round(escala))))
+        dono = f"g{bagagem.owner_party}" if bagagem.owner_party is not None else "sem dono"
+        cv2.putText(
+            anotado,
+            f"apontada {bag_id} ({dono})",
+            (centro[0] + raio, centro[1]),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5 * escala,
+            AZUL,
+            max(1, int(round(2 * escala))),
+        )
 
 
 def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSession) -> np.ndarray:
@@ -137,6 +168,7 @@ def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSes
     """
     anotado = quadro.copy()
     escala = max(1.0, anotado.shape[0] / ALTURA_DE_REFERENCIA)
+    _desenha_apontadas(anotado, sessao, escala)
     for det in tracked:
         cor, rotulo, espessura = _cor_e_rotulo(det, sessao)
         traco = max(1, int(round(espessura * escala)))
@@ -163,13 +195,26 @@ class Painel:
         self._trava = threading.Lock()
         self._jpeg: bytes | None = None
         self._estado: dict[str, Any] = {}
+        self._tamanho: tuple[float, float] | None = None
 
     def atualiza(self, quadro: np.ndarray, estado_atual: dict[str, Any]) -> None:
         ok, codificado = cv2.imencode(".jpg", quadro, [cv2.IMWRITE_JPEG_QUALITY, QUALIDADE_JPEG])
+        altura, largura = quadro.shape[:2]
         with self._trava:
             if ok:
                 self._jpeg = codificado.tobytes()
             self._estado = estado_atual
+            self._tamanho = (float(largura), float(altura))
+
+    def tamanho(self) -> tuple[float, float] | None:
+        """Largura e altura do último quadro, em pixels.
+
+        O clique chega da tela em fração do quadro -- o navegador mostra a
+        imagem reduzida, e mandar pixel de tela apontaria outro lugar da cena.
+        É aqui que a fração vira pixel.
+        """
+        with self._trava:
+            return self._tamanho
 
     def jpeg(self) -> bytes | None:
         with self._trava:

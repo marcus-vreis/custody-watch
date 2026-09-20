@@ -105,6 +105,16 @@ class Bag:
     de ser depositada.
     """
     unattended_since: float | None = None
+    apontada: bool = False
+    """Âncora criada por um operador, não por detecção.
+
+    Existe porque há bagagem que o detector não vê de jeito nenhum -- medido
+    no MEVA, zero caixa em 90s de bolsa parada. Para essa, a ausência de
+    detecção não é evidência de nada: ela nunca esteve presente aos olhos do
+    detector. Enquanto for `True`, a bagagem fica fora da resolução de
+    oclusão por prazo; no dia em que o detector enfim a vir, volta a `False`
+    e o silêncio dele torna a significar alguma coisa.
+    """
     occluded_since: float | None = None
     """Instante em que o detector deixou de ver a bagagem. `None` => visível.
 

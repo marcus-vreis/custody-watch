@@ -226,3 +226,93 @@ def test_cliente_que_nao_negocia_nao_tira_a_tela_do_ar(certificado):
         mudo.close()
         servidor.encerra()
         thread.join(5.0)
+
+
+def _sessao_viva():
+    from custody_watch.config import Config
+    from custody_watch.orchestrator import LiveSession
+    from custody_watch.tracking import TrackedDetection
+    from tests.test_apontar import ALTURA_PX, DONO
+    from tests.test_occlusion import PLANO, caixa
+
+    sessao = LiveSession(PLANO, Config())
+    sessao.feed(0.0, [TrackedDetection(DONO, "person", caixa(10.0, 10.0, ALTURA_PX))])
+    return sessao
+
+
+def _posta(url: str, carga: dict):
+    dados = json.dumps(carga).encode("utf-8")
+    pedido = urllib.request.Request(
+        url, data=dados, headers={"Content-Type": "application/json"}, method="POST"
+    )
+    return urllib.request.urlopen(pedido, timeout=5.0)
+
+
+@pytest.fixture
+def com_sessao():
+    painel = Painel()
+    sessao = _sessao_viva()
+    painel.atualiza(np.zeros((2000, 2000, 3), np.uint8), {})
+    servidor = Servidor(painel, "127.0.0.1", 0, sessao=sessao)
+    thread = threading.Thread(target=servidor.serve_forever, args=(0.05,), daemon=True)
+    thread.start()
+    yield sessao, f"http://127.0.0.1:{servidor.porta}"
+    servidor.encerra()
+    thread.join(5.0)
+
+
+def test_apontar_bagagem_pela_tela(com_sessao):
+    """O clique chega em fração do quadro: o navegador mostra a imagem
+    reduzida, e mandar pixel da tela apontaria outro lugar da cena."""
+    sessao, base = com_sessao
+
+    with _posta(base + "/ancora", {"x": 0.525, "y": 0.5}) as resposta:
+        corpo = json.loads(resposta.read())
+
+    bagagem = next(b for b in sessao.anchors() if b.bag_id == corpo["bagagem"])
+    assert bagagem.anchor.x == pytest.approx(10.5, abs=0.1)
+    assert bagagem.anchor.y == pytest.approx(10.0, abs=0.1)
+    assert sessao.apontadas()[bagagem.bag_id] == (1050.0, 1000.0)
+
+
+def test_apontar_dono_pela_tela(com_sessao):
+    sessao, base = com_sessao
+    with _posta(base + "/ancora", {"x": 0.525, "y": 0.5}) as resposta:
+        bagagem = json.loads(resposta.read())["bagagem"]
+
+    with _posta(base + "/dono", {"bagagem": bagagem, "x": 0.5, "y": 0.49}) as resposta:
+        assert json.loads(resposta.read())["bagagem"] == bagagem
+
+    assert next(b for b in sessao.anchors() if b.bag_id == bagagem).owner_party is not None
+
+
+def test_apontar_dono_onde_nao_ha_ninguem_devolve_400(com_sessao):
+    _, base = com_sessao
+    with _posta(base + "/ancora", {"x": 0.525, "y": 0.5}) as resposta:
+        bagagem = json.loads(resposta.read())["bagagem"]
+
+    with pytest.raises(urllib.error.HTTPError) as erro:
+        _posta(base + "/dono", {"bagagem": bagagem, "x": 0.01, "y": 0.01})
+
+    assert erro.value.code == 400
+
+
+def test_corpo_invalido_devolve_400(com_sessao):
+    _, base = com_sessao
+
+    for carga in ({"x": "aqui", "y": 0.5}, {"y": 0.5}, {"x": 2.0, "y": 0.5}):
+        with pytest.raises(urllib.error.HTTPError) as erro:
+            _posta(base + "/ancora", carga)
+        assert erro.value.code == 400
+
+
+def test_sem_sessao_apontar_nao_existe(no_ar):
+    """A tela de um painel sem sessão -- uma gravação já encerrada -- não
+    pode fabricar âncora em sessão nenhuma."""
+    painel, _, base = no_ar
+    painel.atualiza(np.zeros((24, 32, 3), np.uint8), {})
+
+    with pytest.raises(urllib.error.HTTPError) as erro:
+        _posta(base + "/ancora", {"x": 0.5, "y": 0.5})
+
+    assert erro.value.code == 409

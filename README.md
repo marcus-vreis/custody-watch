@@ -75,6 +75,8 @@ uv run python scripts/serve.py rtsp://camera/stream --calibration ground.json
 
 and open `http://localhost:8765`. A file is processed without loss, on its own clock — `--passo N` skips frames without shrinking time. A camera (index or URL) always hands over the newest frame, timed by the wall clock: processing every frame of a camera faster than the detector would drift further behind for the whole shift. It listens on this machine only. Listening beyond it with `--host` is refused without `--cert` and `--key`: plain HTTP on a network is the camera open to anyone on the same segment, and a warning in the terminal protects no one. On the gate clip, CPU only, `--passo 2` runs at about real time and the thief is the only N3, ranked first, and reaches the screen while the clip is still playing — not after it ends.
 
+**The operator can point at what the detector cannot see.** On the live screen, *Apontar bagagem* turns a click into an anchor at that spot, and *Apontar dono* attaches an owner to it; both are recorded in the event log as `origem: operador`, so a human assertion is never confused with a detection. This exists because of a measurement, not a hunch: across the four MEVA thefts, in the 90 s each bag sits still before it is taken, the detector produces **zero** bag boxes over it — and neither a bigger model (`yolo26x`) nor a 4× zoomed crop changes that zero, even at a confidence of 0.05. A pointed anchor is watched by the same rules as any other: it goes unattended when its owner walks away, and a stranger who touches it is ranked. It buys nothing it cannot see, though — with no bag detections there is no removal to observe, so theft of an invisible bag stays out of reach.
+
 Fetch the dataset (~192 MB) and measure:
 
 ```bash
@@ -133,7 +135,7 @@ uv run python scripts/build_report.py
 | `events.py` | Events as serialisable intervals, JSONL |
 | `orchestrator.py` | Wires it together; consumes frames, emits a queue — in batch or one frame at a time |
 | `aovivo.py` | The live loop: file on its own clock, camera always on its newest frame |
-| `painel.py` | What the live screen shows: queue, custody events, annotated frame |
+| `painel.py` | What the live screen shows: queue, custody events, annotated frame, pointed anchors |
 | `servidor.py` | Standard-library HTTP: the page, MJPEG video, state as JSON |
 | `clips.py` | Annotated GIF cut around the gravest signal |
 | `report.py` | The operator's review page |

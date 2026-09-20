@@ -109,6 +109,19 @@ class FlagStore:
     def add(self, flag: Flag) -> None:
         self._by_person[flag.person].append(flag)
 
+    def drop(self, person: int, bag: int) -> int:
+        """Esquece as flags de uma pessoa sobre uma bagagem.
+
+        Existe porque a posse pode chegar **depois** do contato: entre apontar
+        a bagagem e apontar o dono passam segundos, e neles o dono está
+        encostado numa bagagem que ainda não é de ninguém. Flag contra quem se
+        revela dono não é evidência de nada.
+        """
+        antes = self._by_person.get(person, [])
+        restantes = [f for f in antes if f.bag != bag]
+        self._by_person[person] = restantes
+        return len(antes) - len(restantes)
+
     def for_person(self, person: int) -> list[Flag]:
         return sorted(self._by_person.get(person, []), key=lambda f: f.t)
 
