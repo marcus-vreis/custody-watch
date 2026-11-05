@@ -117,3 +117,27 @@ def test_total_positives_menor_que_os_detectados_e_rejeitado():
 def test_total_positives_zero_e_rejeitado():
     with pytest.raises(ValueError, match="nenhum evento verdadeiro"):
         p_miss_at_rfa([], video_minutes=10.0, target_rfa=0.1, total_positives=0)
+
+
+@pytest.mark.parametrize("positivo_primeiro", [True, False])
+@pytest.mark.parametrize("orcamento", [0.0, 1.0])
+def test_scores_iguais_entram_juntos_no_limiar(positivo_primeiro, orcamento):
+    eventos = [ScoredEvent(1.0, True), ScoredEvent(1.0, False)]
+    if not positivo_primeiro:
+        eventos.reverse()
+
+    ponto = p_miss_at_rfa(eventos, 1.0, orcamento, total_positives=1)
+    aceitos = [evento for evento in eventos if evento.score >= ponto.threshold]
+
+    assert ponto.false_alarms == sum(not evento.is_true_event for evento in aceitos)
+    assert ponto.p_miss == 1.0 - sum(evento.is_true_event for evento in aceitos)
+    assert ponto.false_alarms <= orcamento
+    assert ponto.p_miss == (1.0 if orcamento == 0.0 else 0.0)
+
+
+def test_grupo_empatado_que_excede_orcamento_preserva_limiar_anterior():
+    eventos = [ScoredEvent(2.0, True), ScoredEvent(1.0, True), ScoredEvent(1.0, False)]
+
+    ponto = p_miss_at_rfa(eventos, 1.0, 0.0, total_positives=2)
+
+    assert ponto == OperatingPoint(threshold=2.0, p_miss=0.5, false_alarms=0, rfa=0.0)
