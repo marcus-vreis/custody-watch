@@ -21,10 +21,12 @@ rede, HTTP em claro é a câmera aberta para quem estiver no mesmo segmento.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import cv2
 
@@ -46,7 +48,29 @@ from custody_watch.servidor import (
     contexto_tls,
     so_nesta_maquina,
 )
+from custody_watch.source_health import SourceHealth
 from custody_watch.video import DEFAULT_MIN_CONFIDENCE, DEFAULT_WEIGHTS
+
+
+def _positive_timeout(value: str) -> float:
+    try:
+        timeout = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("timeout precisa ser número finito positivo") from error
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise argparse.ArgumentTypeError("timeout precisa ser número finito positivo")
+    return timeout
+
+
+def _source_label(value: str) -> str:
+    if "://" not in value:
+        return value
+    try:
+        parts = urlsplit(value)
+        authority = parts.netloc.rsplit("@", 1)[-1]
+        return f"{parts.scheme}://{authority}/…"
+    except ValueError:
+        return "fonte de rede"
 
 
 def _argumentos() -> argparse.Namespace:
@@ -79,6 +103,12 @@ def _argumentos() -> argparse.Namespace:
     parser.add_argument("--porta", type=int, default=PORTA_PADRAO)
     parser.add_argument("--cert", type=Path, help="certificado TLS (PEM)")
     parser.add_argument("--key", type=Path, help="chave do certificado TLS (PEM)")
+    parser.add_argument(
+        "--source-timeout",
+        type=_positive_timeout,
+        default=5.0,
+        help="segundos sem nova captura local para marcar a fonte como desatualizada",
+    )
     return parser.parse_args()
 
 
@@ -94,7 +124,7 @@ def _servidor(args: argparse.Namespace, painel: Painel, sessao: LiveSession) -> 
     return Servidor(painel, args.host, args.porta, tls=tls, sessao=sessao)
 
 
-def _fonte(args: argparse.Namespace, parar: threading.Event):
+def _fonte(args: argparse.Namespace, parar: threading.Event, source_health=None):
     """Os quadros, e a câmera quando é ao vivo -- para contar o que se perdeu."""
     alvo, ao_vivo = fonte_de(args.fonte)
     if not ao_vivo:
@@ -106,15 +136,16 @@ def _fonte(args: argparse.Namespace, parar: threading.Event):
         raise ValueError("--passo só vale para arquivo: câmera já descarta o que não dá tempo")
     captura = cv2.VideoCapture(alvo)
     if not captura.isOpened():
-        raise ValueError(f"não foi possível abrir a câmera {alvo}")
-    camera = CameraAoVivo(captura, parar=parar)
+        captura.release()
+        raise ValueError(f"não foi possível abrir a câmera {_source_label(str(alvo))}")
+    camera = CameraAoVivo(captura, parar=parar, source_health=source_health)
     return iter(camera), camera
 
 
 def _anuncia(args: argparse.Namespace, servidor: Servidor, ao_vivo: bool) -> None:
     esquema = "https" if servidor.cifrado else "http"
     endereco = "localhost" if so_nesta_maquina(args.host) else args.host
-    print(f"fonte   : {args.fonte} ({'ao vivo' if ao_vivo else 'arquivo'})")
+    print(f"fonte   : {_source_label(args.fonte)} ({'ao vivo' if ao_vivo else 'arquivo'})")
     print(f"detector: {args.weights}, confiança mínima {args.min_confidence}")
     if not so_nesta_maquina(args.host):
         print(f"AVISO: escutando em {args.host} -- a tela fica acessível pela rede, cifrada")
@@ -134,7 +165,9 @@ def _relata_fim(sessao: LiveSession, camera: CameraAoVivo | None) -> None:
 def main() -> int:
     args = _argumentos()
     parar = threading.Event()
-    painel = Painel()
+    _, ao_vivo = fonte_de(args.fonte)
+    health = SourceHealth("live" if ao_vivo else "file", stale_after_s=args.source_timeout)
+    painel = Painel(source_health=health)
     config = load_config(args.config) if args.config else Config()
     try:
         plane = plane_from(args.calibration, args.metres_per_pixel)
@@ -144,7 +177,7 @@ def main() -> int:
         print(erro, file=sys.stderr)
         return 1
     try:
-        quadros, camera = _fonte(args, parar)
+        quadros, camera = _fonte(args, parar, source_health=health)
     except ValueError as erro:
         print(erro, file=sys.stderr)
         servidor.server_close()
@@ -161,6 +194,8 @@ def main() -> int:
             painel,
             parar=parar,
             escala_uniforme=args.metres_per_pixel is not None,
+            source_health=health,
+            capture_time=camera.received_at if camera is not None else None,
         )
         _relata_fim(sessao, camera)
         while True:
@@ -169,6 +204,7 @@ def main() -> int:
         print("\nencerrando...")
     finally:
         parar.set()
+        health.finish("stopped", "user_stop")
         servidor.encerra()
     return 0
 

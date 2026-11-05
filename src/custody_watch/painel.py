@@ -22,6 +22,7 @@ import numpy as np
 
 from .events import EventKind
 from .orchestrator import LiveSession
+from .source_health import SourceHealth
 from .tracking import TrackedDetection
 from .types import FlagLevel
 
@@ -191,8 +192,9 @@ def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSes
 class Painel:
     """O último quadro e o último estado, trocados entre duas threads."""
 
-    def __init__(self) -> None:
+    def __init__(self, source_health: SourceHealth | None = None) -> None:
         self._trava = threading.Lock()
+        self._source_health = source_health
         self._jpeg: bytes | None = None
         self._estado: dict[str, Any] = {}
         self._tamanho: tuple[float, float] | None = None
@@ -222,7 +224,11 @@ class Painel:
 
     def estado(self) -> dict[str, Any]:
         with self._trava:
-            return dict(self._estado)
+            atual = dict(self._estado)
+        # Atualiza a idade na consulta HTTP, não só quando chegar outro frame.
+        if self._source_health is not None:
+            atual["fonte"] = self._source_health.snapshot()
+        return atual
 
 
 __all__ = ["Painel", "desenha", "estado"]

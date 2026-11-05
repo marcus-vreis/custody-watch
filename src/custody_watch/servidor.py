@@ -324,6 +324,9 @@ main {
   width: 100%; height: auto; display: block; background: #000; border-radius: 6px;
   min-height: 200px;
 }
+#video.historico { outline: 2px solid var(--aviso-borda); }
+#fonte { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+#fonte .detalhe { color: var(--suave); }
 section h2 {
   font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--suave); margin: 0 0 8px; font-weight: 600;
@@ -361,6 +364,7 @@ tr.estranho td { color: var(--n3); font-weight: 600; }
   <span class="medida">bagagens em custódia <b id="ancoras">–</b></span>
   <span id="conexao">conectando…</span>
 </header>
+<div id="fonte" class="aviso" role="status" aria-live="polite">Fonte inicializando…</div>
 <div id="avisos"></div>
 <main>
   <div>
@@ -451,11 +455,39 @@ function desenhaAvisos(avisos) {
   for (const a of avisos || []) alvo.append(el("div", "aviso", a));
 }
 
+function desenhaFonte(fonte) {
+  const alvo = document.getElementById("fonte");
+  const rotulos = {
+    initializing: "Fonte inicializando",
+    receiving: "Recebendo imagens",
+    stale: "Sem imagens recentes",
+    interrupted: "Captura interrompida",
+    completed: "Arquivo concluído",
+    stopped: "Encerramento solicitado",
+  };
+  const historica = !fonte || fonte.historical;
+  const estado = fonte ? (rotulos[fonte.state] || "Estado da fonte indisponível")
+                       : "Estado da fonte indisponível";
+  const detalhes = [];
+  if (fonte) {
+    const segundos = (v) => v.toFixed(1) + " s";
+    detalhes.push(fonte.received_age_s === null ? "Nenhum frame recebido."
+      : "Última captura local há " + segundos(fonte.received_age_s) + ".");
+    detalhes.push(fonte.image_age_s === null ? "Aguardando imagem processada."
+      : "Imagem exibida capturada há " + segundos(fonte.image_age_s) + ".");
+  }
+  alvo.replaceChildren(el("b", "", (historica ? "Imagem histórica · " : "") + estado),
+                       el("span", "detalhe", detalhes.join(" ")));
+  document.getElementById("video").classList.toggle("historico", Boolean(historica));
+}
+
 async function atualiza() {
   const conexao = document.getElementById("conexao");
   try {
     const r = await fetch("/estado", { cache: "no-store" });
+    if (!r.ok) throw new Error("servidor indisponível");
     const e = await r.json();
+    desenhaFonte(e.fonte);
     if (e.t !== undefined) {
       document.getElementById("t").textContent = relogio(e.t);
       document.getElementById("quadros").textContent = e.quadros;
@@ -464,9 +496,10 @@ async function atualiza() {
       desenhaEventos(e.eventos);
       desenhaAvisos(e.avisos);
     }
-    conexao.textContent = "ao vivo";
+    conexao.textContent = "servidor conectado";
     conexao.className = "";
   } catch (erro) {
+    desenhaFonte(null);
     conexao.textContent = "sem conexão com o servidor";
     conexao.className = "caiu";
   }
