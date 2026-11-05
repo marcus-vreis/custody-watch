@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 649 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 658 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -296,6 +296,63 @@ not acquire those inputs or infer missing provenance.
 | `caviar.py` | Dataset reader |
 
 ## Auditability
+
+### CPU duration and state budgets
+
+The CI smoke in `tests/test_session_lifecycle.py` exercises deterministic ID
+turnover, repeated occlusions, frame discard, quiet intervals, interrupted and
+blocked capture, recovery and exhausted retries. It instantiates no detector,
+camera, network source or GPU. It checks structure and lifecycle, never a host's
+FPS or memory tolerance. For a separate opt-in benchmark:
+
+```powershell
+.venv\Scripts\python.exe scripts/soak_session.py --frames 12800 --sample-every 400 --seed 7 --profile-memory --output outputs/soak-prefixes
+.venv\Scripts\python.exe scripts/soak_session.py --wall-seconds 30 --sample-every 4000 --seed 7 --profile-memory --output outputs/soak-wall
+```
+
+The second command targets 30 seconds of actual CPU exercise, stopping after a
+frame and then finalizing logs/fault cases. Neither command is a real camera
+soak. Outputs must be new directories. `summary.json` records revision, dirty
+state, source hashes, environment, command, seed and configuration. Streaming
+`snapshots.jsonl` and `curves.csv` expose component counts, cumulative inclusive
+stage timings, frame counters, thread counts, heap and process-memory samples.
+Ctrl+C closes the journal and writes an interrupted summary referring to the
+last complete checkpoint; the journal can contain additional completed records.
+
+`SessionProbe.RETENTION` describes every measured collection and the references
+that prevent blind expiration. No retention policy is changed by this harness.
+The default threshold of 64 identities is a diagnostic stress budget for a scene
+with at most three tracks per frame, not an approved deployment capacity. History
+and pending-sample budgets allow their configured windows; events have an explicit
+64-item tail. Optional `--max-rss-mib` and `--max-feed-ms` are host-specific
+budgets; unavailable RSS cannot silently pass a requested RSS budget. Exit 2
+means an exceeded/unverified budget or failed fault check; results remain saved.
+
+Observed Windows CPU results (one run per mode, seed 7, traced allocations on):
+
+| Mode | Available / processed / discarded frames | Simulated seconds | Actual seconds | Result |
+|---|---|---:|---:|---|
+| Fixed prefix | 12,800 / 12,359 / 441 | 2,559.8 | 1.645 | diagnostic budgets exceeded |
+| Actual-duration run | 92,026 / 88,853 / 3,173 | 18,405.0 | 30.208 | diagnostic budgets exceeded |
+
+Sources: [prefix results](benchmarks/cpu-synthetic-2026-11-04/prefixes/summary.json),
+[duration results](benchmarks/cpu-synthetic-2026-11-04/wall-30s/summary.json), with
+raw snapshots and curves beside each summary. These were measured in a dirty
+working tree based on `38832f8`; source hashes qualify the exact harness version.
+The actual-duration run ended with 920 bag records, 921 person histories and
+889 incomplete re-ID candidates, while only 64 of 3,679 emitted events remained
+in the RAM tail. All synthetic captures were released; Python thread count
+returned from 1 to 1. The blocked fake correctly failed recovery before the
+harness explicitly unblocked it for cleanup. These observations identify work
+for #30 and related identity/history retention; they establish no production
+availability, detector quality, RTSP reliability or universal throughput.
+
+`tracemalloc` measures allocations traced after its start, not every native
+allocation or VRAM. On Windows, process memory uses
+[GetProcessMemoryInfo](https://learn.microsoft.com/en-us/windows/win32/psapi/process-memory-usage-information)
+working set, including shared and private pages; Linux uses `/proc/self/statm`.
+Other platforms can report unavailable RSS. Different scopes must not be added
+together or interpreted as evidence of GPU memory usage.
 
 ### Incremental journal and retention
 
