@@ -245,3 +245,18 @@ def test_consulta_de_saude_e_cauda_nao_aguardam_escrita_bloqueada(tmp_path):
         release.set()
         producer.join(1)
         writer.close()
+
+
+def test_lifecycle_registra_relogio_e_limites_da_lacuna(tmp_path):
+    with JournalWriter(tmp_path, clock=lambda: 120.0) as writer:
+        writer.finish_segment(interrupted=True, reason="read_failed", gap_start_s=100.0)
+        writer.start_segment(reason="reconnected", gap_start_s=100.0, gap_end_s=119.0)
+
+    rows = list(iter_journal(writer.directory))
+    assert rows[1]["payload"] == {
+        "reason": "read_failed",
+        "local_monotonic_s": 120.0,
+        "gap_start_s": 100.0,
+    }
+    assert rows[2]["payload"]["gap_end_s"] == 119.0
+    assert rows[2]["payload"]["gap_start_s"] == 100.0

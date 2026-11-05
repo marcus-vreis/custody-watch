@@ -34,6 +34,22 @@ def write_part(directory, number, records, *, tail=b""):
     return path
 
 
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"local_monotonic_s": True},
+        {"local_monotonic_s": float("nan")},
+        {"gap_start_s": "100"},
+        {"gap_end_s": 110.0},
+        {"gap_start_s": 110.0, "gap_end_s": 100.0},
+    ],
+)
+def test_lifecycle_recusa_relogio_ou_lacuna_invalidos(tmp_path, fields):
+    write_part(tmp_path, 0, [envelope(payload={"reason": "start", **fields})])
+    with pytest.raises(JournalFormatError):
+        list(iter_journal(tmp_path))
+
+
 def test_multiplas_partes_continuam_segmento_e_permitem_reconexao(tmp_path):
     records = [
         envelope(),

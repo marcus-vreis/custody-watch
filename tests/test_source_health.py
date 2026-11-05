@@ -66,3 +66,21 @@ def test_reason_nao_aceita_texto_externo():
     health = SourceHealth("live")
     with pytest.raises(ValueError, match="reason"):
         health.finish("interrupted", "rtsp://usuario:senha@cam")
+
+
+def test_reinicio_preserva_imagem_historica_ate_primeira_publicacao_nova():
+    clock = Clock()
+    health = SourceHealth("live", clock=clock)
+    received = health.received(0.0)
+    health.processed(0.0, received_at=received)
+    health.finish("interrupted", "read_failed")
+    clock.now = 101.0
+
+    health.restart()
+    health.received(0.0)
+
+    assert health.snapshot()["state"] == "receiving"
+    assert health.snapshot()["historical"] is True
+    health.processed(0.0, received_at=101.0)
+    assert health.snapshot()["historical"] is False
+    assert health.snapshot()["received_frames"] == health.snapshot()["processed_frames"] == 2

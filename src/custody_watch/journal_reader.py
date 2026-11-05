@@ -95,11 +95,21 @@ def _validate_envelope(record: Any) -> None:
     if kind == "event":
         _validate_event(payload)
     elif (
-        payload.keys() != {"reason"}
+        not {"reason"}
+        <= payload.keys()
+        <= {"reason", "local_monotonic_s", "gap_start_s", "gap_end_s"}
         or not isinstance(payload["reason"], str)
         or payload["reason"] not in _REASONS[kind]
     ):
         raise ValueError("reason incompatível com o lifecycle")
+    elif kind != "event":
+        for field in ("local_monotonic_s", "gap_start_s", "gap_end_s"):
+            if field in payload and type(payload[field]) not in (int, float):
+                raise ValueError(f"{field} deve ser numérico finito")
+        if "gap_end_s" in payload and (
+            "gap_start_s" not in payload or payload["gap_end_s"] < payload["gap_start_s"]
+        ):
+            raise ValueError("gap_end_s exige gap_start_s anterior")
 
 
 def validate_record(record: dict) -> None:

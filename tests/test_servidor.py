@@ -248,6 +248,36 @@ def _posta(url: str, carga: dict):
     return urllib.request.urlopen(pedido, timeout=5.0)
 
 
+def test_troca_de_segmento_recusa_clique_antigo_e_quadro_de_outro_segmento():
+    painel = Painel()
+    old, new = _sessao_viva(), _sessao_viva()
+    painel.atualiza(np.zeros((24, 32, 3), np.uint8), {"segment_id": "old"})
+    servidor = Servidor(painel, "127.0.0.1", 0, sessao=old)
+    servidor.set_session(new, "new")
+    thread = threading.Thread(target=servidor.serve_forever, args=(0.05,), daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{servidor.porta}"
+    try:
+        for tag in (None, "old", "new"):
+            with pytest.raises(urllib.error.HTTPError) as error:
+                _posta(base + "/ancora", {"x": 0.5, "y": 0.5, "segment_id": tag})
+            assert error.value.code == 409
+        assert old.anchors() == new.anchors() == []
+        with pytest.raises(urllib.error.HTTPError) as error:
+            _get(base + "/quadro.jpg?segment_id=new")
+        assert error.value.code == 503
+        painel.atualiza(np.zeros((24, 32, 3), np.uint8), {"segment_id": "new"})
+        with _posta(base + "/ancora", {"x": 0.5, "y": 0.5, "segment_id": "new"}) as response:
+            assert response.status == 200
+        assert len(new.anchors()) == 1
+        assert old.anchors() == []
+        with _get(base + "/quadro.jpg?segment_id=new") as response:
+            assert response.read().startswith(b"\xff\xd8")
+    finally:
+        servidor.encerra()
+        thread.join(2)
+
+
 @pytest.fixture
 def com_sessao():
     painel = Painel()
