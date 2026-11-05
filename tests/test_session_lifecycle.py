@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 from collections import deque
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,7 @@ from custody_watch.journal_reader import iter_journal
 from custody_watch.lifecycle_probe import lifecycle_smoke
 from custody_watch.orchestrator import LiveSession
 from custody_watch.session_probe import RETENTION, SessionProbe, synthetic_frames
+from custody_watch.types import BagState, Observation, Point
 
 
 def session(tail=8, sink=None):
@@ -57,7 +59,7 @@ def test_colecao_nova_exige_atualizar_instrumentacao_e_contrato_de_retencao():
                 "together_since",
             },
         ),
-        (state.registry, {"_bags", "_by_track"}),
+        (state.registry, {"_bags", "_by_track", "_unresolved"}),
         (state.linker, {"_windows", "_canonical", "_pending", "_pending_since"}),
         (state.parties, {"_parties", "_party_of"}),
         (state.flags, {"_by_person"}),
@@ -107,6 +109,42 @@ def test_snapshot_expoe_crescimento_que_a_cauda_de_eventos_esconde():
     assert cuts[399]["events_retained"] <= 2
     assert cuts[399]["events_total"] > cuts[399]["events_retained"]
     assert measured.anchors(), "medir não pode apagar posse/âncora ativa"
+
+
+def test_indice_nao_terminal_preserva_eventos_estados_fila_e_posse_da_varredura_completa():
+    baseline, indexed = session(tail=1000), session(tail=1000)
+    baseline._s.registry.unresolved = baseline._s.registry.all
+    for frame in synthetic_frames(1200, seed=7):
+        if not frame.dropped:
+            baseline.feed(frame.t, list(frame.tracked))
+            indexed.feed(frame.t, list(frame.tracked))
+    assert [e.to_dict() for e in indexed.events] == [e.to_dict() for e in baseline.events]
+    assert [asdict(b) for b in indexed._s.registry.all()] == [
+        asdict(b) for b in baseline._s.registry.all()
+    ]
+    assert indexed.queue() == baseline.queue()
+    assert len(indexed._s.registry.unresolved()) < len(indexed._s.registry.all())
+
+
+def test_caminhos_por_frame_e_painel_nao_pedem_registro_completo_de_terminais():
+    live = session()
+    registry = live._s.registry
+    for identity in range(100):
+        bag = registry.observe(Observation(identity, "suitcase", Point(0.0, 0.0), 0.0))
+        bag.state = BagState.RETIRADA_DONO
+    current = registry.observe(Observation(101, "suitcase", Point(5.0, 5.0), 0.0))
+    registry.assign_owner(101, 44)
+    live.feed(0.0, [])  # primeira consulta retira recém-terminais do índice
+
+    class NoScan(dict):
+        def values(self):
+            pytest.fail("feed/anchors não podem varrer o registro histórico completo")
+
+    registry._bags = NoScan(registry._bags)
+    live.feed(0.2, [])
+    assert live.anchors() == [current]
+    assert current.owner_party == 44
+    assert registry.get(1).state is BagState.RETIRADA_DONO
 
 
 def test_probe_restaura_metodos_apos_excecao():

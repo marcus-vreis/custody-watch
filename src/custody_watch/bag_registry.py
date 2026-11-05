@@ -24,6 +24,7 @@ class BagRegistry:
     def __init__(self, config: RegistryConfig = DEFAULT_REGISTRY) -> None:
         self._bags: dict[int, Bag] = {}
         self._by_track: dict[int, int] = {}
+        self._unresolved: dict[int, Bag] = {}
         self._config = config
 
     def get(self, bag_id: int) -> Bag | None:
@@ -72,6 +73,23 @@ class BagRegistry:
     def all(self) -> list[Bag]:
         return list(self._bags.values())
 
+    def unresolved(self) -> list[Bag]:
+        """Índice de custódias não terminais, incluindo as ambíguas.
+
+        Custódia terminal é irreversível no domínio. Como a resolução escreve
+        em Bag.state, retirar do índice na próxima consulta observa também
+        transições feitas por custody.py. Não varre tombstones de consultas
+        anteriores, nem apaga registro, posse, alias ou evidência histórica.
+        Ambiguidade permanece: ela suprime sinais, mas não encerra custódia.
+        """
+        current = []
+        for bag_id, bag in list(self._unresolved.items()):
+            if bag.state in TERMINAL_BAG_STATES:
+                self._unresolved.pop(bag_id, None)
+            else:
+                current.append(bag)
+        return current
+
     def observe(
         self,
         observation: Observation,
@@ -96,6 +114,7 @@ class BagRegistry:
                 anchored_at=observation.t,
             )
             self._bags[bag.bag_id] = bag
+            self._unresolved[bag.bag_id] = bag
 
             if events is not None:
                 events.emit(
