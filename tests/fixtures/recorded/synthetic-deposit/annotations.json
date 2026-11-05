@@ -1,0 +1,10 @@
+{
+  "session": "synthetic-deposit",
+  "events": [
+    {
+      "kind": "bag_unattended",
+      "t": 5.0,
+      "t_end": 40.0
+    }
+  ]
+}

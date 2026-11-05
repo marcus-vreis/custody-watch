@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. 397 tests, CI green.
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 501 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -115,6 +115,99 @@ Build the operator's review page, with annotated clips:
 uv run python scripts/build_report.py
 ```
 
+### Replaying recorded predictions in CPU
+
+`evaluate_recorded.py` runs the logic over a frozen detection/tracking cache.
+It does not instantiate a detector, decode video, download weights or use a GPU.
+The bundled example is an original synthetic trajectory fixture under CC0-1.0;
+it is a software check, not a result on real footage:
+
+```powershell
+.venv\Scripts\python.exe scripts/evaluate_recorded.py tests/fixtures/recorded/synthetic-deposit/manifest.json --output outputs/replay-synthetic-01
+```
+
+The output directory must be new. It contains `summary.json`, `events.jsonl`
+and `metrics.csv`; earlier evaluations are never overwritten. Exit codes are
+`0` when at least one requested class has a measurable operating point, `1` for
+invalid inputs or an I/O failure, and `2` when no requested class can be scored
+(no measurable positives, or unresolved predictions under censored annotation).
+The last case still exports the counts and false alarms, with `P_miss` absent
+and a refusal reason. A negative control cannot establish a miss probability.
+
+Start with the example manifest when preparing a real sequence. Schema version 1
+requires all of the following:
+
+| Field | Contract |
+|---|---|
+| `sequence_id`, `mode` | Annotation `session` must equal the sequence ID. `mode` is `predictions` or `oracle`. |
+| `source` | `kind` (`video` or `synthetic`), origin, redistribution conditions and source file identity. |
+| `predictions` | Cache file identity and `provenance`: `detector` for real predictions, `synthetic` for synthetic traces, `ground_truth` only in `oracle` mode. |
+| `annotations`, `config` | File identities for event annotations and the existing config JSON. |
+| `geometry` | `uniform_scale` with explicit `metres_per_pixel` and a written limitation, or `calibration` with a measured calibration file identity. The existing residual check still applies. |
+| `clock` | Original `fps`, observation bounds `start_s`/`end_s`, and total source `frame_count`, before any skipping. Timestamps use the same seconds as annotations. |
+| `classes` | Unique subset of `person`, `suitcase`, `backpack`, `handbag`; every cached detection must belong to it. |
+| `producer` | Code revision, detector and tracker names **with versions**, weights SHA-256 (or null when not applicable), environment versions, original command as an argument list, and named integer seeds (empty if deterministic). |
+| `evaluation` | Explicit event `kinds`, `lag_window_s`, `slack_before_s`, and per-class false-alarm budget `target_rfa` in events/minute. |
+
+A file identity is `{ "path": "relative/file.json", "size_bytes": 123,
+"sha256": "64 lowercase hexadecimal digits" }`. Paths are relative to the
+manifest. The source video's `path` may be null for offline replay; its size and
+hash remain required metadata, and the report then says that the source file
+was **not verified**. Every other referenced file is required and verified
+before the logic runs. Hashes identify bytes, not the accuracy of annotations
+or the truthfulness of a declared provenance.
+
+Each line of the UTF-8 cache is one frame record:
+
+```json
+{"schema_version":1,"frame_index":0,"t":0.0,"status":"observed","detections":[{"track_id":9,"cls":"suitcase","bbox":[210,150,250,200],"touches_bottom":false}]}
+```
+
+Boxes use image pixels in `xyxy` order; projection happens during replay.
+Optional `appearance` is the existing session-scoped HSV signature as a flat
+list, not a new embedding format. Preserve it, along with `touches_bottom`,
+when the original run used it: omitting it changes the inputs to re-ID.
+Caches containing real appearance signatures belong in private local research
+storage with an explicit retention policy, never in the public fixture.
+
+An observed frame with `detections: []` means the detector found nothing.
+`status: "missing"` requires an empty list and means no frame was observed.
+Missing frame indices are also counted against `frame_count`. Neither is
+filled with repeated boxes or ground truth. Only observed frames feed the
+session; their original timestamps are retained. Replay freezes tracker output:
+it does not simulate rerunning the tracker at a different input frame rate.
+
+Use the existing event-annotation format (`session`, `events`) with original
+timestamps. `bag_unattended` positives are eligible only after the configured
+duration; short completed states and censored states are counted separately.
+Unmatched predictions in an unresolved censored interval are reported as
+unscored, not asserted to be false. When such predictions exist, the class's
+false-alarm rate and operating point are refused: dropping unknown predictions
+must not manufacture a zero false-alarm result. Positive eligibility never
+depends on whether the detector managed to see the object.
+
+The summary preserves input identities, resolved configuration, producer
+metadata, evaluator revision/dirty state when available, a fingerprint of the
+logic source, runtime versions, emitted events and annotations. It reports
+per-class matches, misses, spurious events, delays and the full declared
+observation duration, including missing frames. No wall-clock run time is used
+as the false-alarm denominator.
+
+**Protocol limits:** matching currently uses event kind and the declared
+asymmetric time window; annotation `bag`/`subject` IDs are not an identity
+accuracy metric. Events have binary score 1, so this evaluator measures event
+presence at an all-or-none threshold, not the ranked operator queue. Equal
+scores enter a threshold together. Oracle traces are labelled in both console
+and exports and must be reported separately from detector results.
+
+Real MEVA/UCF comparisons are not bundled or claimed reproduced here. Obtain
+footage and annotations through the [MEVA](https://mevadata.org/) and
+[UCF-Crime](https://www.crcv.ucf.edu/projects/real-world/) providers under their
+applicable terms, generate tracked predictions separately, and record that
+producer's actual versions, parameters, weights hash and command. Keep videos,
+real caches, credentials and personal paths out of Git. The CPU evaluator does
+not acquire those inputs or infer missing provenance.
+
 ## Modules
 
 | Module | Responsibility |
@@ -143,6 +236,8 @@ uv run python scripts/build_report.py
 | `noise.py` | Detector noise model: drop bursts, position error, ID switches |
 | `metrics.py` | P_miss @ RFA |
 | `annotations.py` | Ground truth as events, and asymmetric matching against what was emitted |
+| `recorded_predictions.py` | Validated, versioned manifests and tracked-prediction caches for CPU replay |
+| `recorded_evaluation.py` | Reproducible event evaluation with input provenance and explicit scoring refusals |
 | `caviar.py` | Dataset reader |
 
 ## Auditability
