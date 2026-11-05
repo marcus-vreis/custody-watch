@@ -39,6 +39,8 @@ from custody_watch.aovivo import (
 )
 from custody_watch.calibration import plane_from
 from custody_watch.config import Config, load_config
+from custody_watch.event_journal import JournalWriter
+from custody_watch.events import EventLog
 from custody_watch.orchestrator import LiveSession
 from custody_watch.painel import Painel
 from custody_watch.servidor import (
@@ -60,6 +62,16 @@ def _positive_timeout(value: str) -> float:
     if not math.isfinite(timeout) or timeout <= 0:
         raise argparse.ArgumentTypeError("timeout precisa ser número finito positivo")
     return timeout
+
+
+def _positive_int(value: str) -> int:
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("esperado inteiro positivo") from error
+    if result <= 0:
+        raise argparse.ArgumentTypeError("esperado inteiro positivo")
+    return result
 
 
 def _source_label(value: str) -> str:
@@ -109,7 +121,57 @@ def _argumentos() -> argparse.Namespace:
         default=5.0,
         help="segundos sem nova captura local para marcar a fonte como desatualizada",
     )
-    return parser.parse_args()
+    parser.add_argument("--journal-dir", type=Path, help="diretório para sessões novas do journal")
+    parser.add_argument(
+        "--journal-part-records",
+        type=_positive_int,
+        default=10000,
+        help="máximo de registros por parte; não limita retenção total em disco",
+    )
+    parser.add_argument(
+        "--journal-fsync",
+        action="store_true",
+        help="solicita sincronização de cada registro; exige --journal-dir",
+    )
+    parser.add_argument(
+        "--event-tail",
+        type=_positive_int,
+        default=1000,
+        help="máximo de eventos recentes em RAM; não apaga o journal",
+    )
+    args = parser.parse_args()
+    if args.journal_fsync and args.journal_dir is None:
+        parser.error("--journal-fsync exige --journal-dir")
+    return args
+
+
+def _session(args, plane, config) -> tuple[LiveSession, JournalWriter | None]:
+    journal = (
+        JournalWriter(
+            args.journal_dir,
+            max_records_per_file=args.journal_part_records,
+            fsync=args.journal_fsync,
+        )
+        if args.journal_dir is not None
+        else None
+    )
+    try:
+        log = EventLog(
+            max_events=args.event_tail, sink=journal.emit if journal is not None else None
+        )
+        return LiveSession(plane, config, events=log), journal
+    except Exception:
+        if journal is not None:
+            journal.close(reason="initialization_failed")
+        raise
+
+
+def _journal_status(journal: JournalWriter | None, session: LiveSession) -> dict:
+    status = journal.snapshot() if journal is not None else {"state": "disabled"}
+    return status | {
+        "retained_events": len(session.events),
+        "total_events": session.events.total_events,
+    }
 
 
 def _servidor(args: argparse.Namespace, painel: Painel, sessao: LiveSession) -> Servidor:
@@ -167,18 +229,25 @@ def main() -> int:
     parar = threading.Event()
     _, ao_vivo = fonte_de(args.fonte)
     health = SourceHealth("live" if ao_vivo else "file", stale_after_s=args.source_timeout)
-    painel = Painel(source_health=health)
-    config = load_config(args.config) if args.config else Config()
+    journal = None
     try:
+        config = load_config(args.config) if args.config else Config()
         plane = plane_from(args.calibration, args.metres_per_pixel)
-        sessao = LiveSession(plane, config)
+        sessao, journal = _session(args, plane, config)
+        painel = Painel(
+            source_health=health, journal_status=lambda: _journal_status(journal, sessao)
+        )
         servidor = _servidor(args, painel, sessao)
     except (ValueError, OSError) as erro:  # ssl.SSLError é OSError
+        if journal is not None:
+            journal.close(reason="initialization_failed")
         print(erro, file=sys.stderr)
         return 1
     try:
         quadros, camera = _fonte(args, parar, source_health=health)
     except ValueError as erro:
+        if journal is not None:
+            journal.close(reason="initialization_failed")
         print(erro, file=sys.stderr)
         servidor.server_close()
         return 1
@@ -197,15 +266,29 @@ def main() -> int:
             source_health=health,
             capture_time=camera.received_at if camera is not None else None,
         )
+        if journal is not None:
+            source = health.snapshot()
+            interrupted = source["state"] == "interrupted"
+            journal.finish_segment(
+                interrupted=interrupted, reason=source["reason"] if interrupted else "end_of_file"
+            )
         _relata_fim(sessao, camera)
         while True:
             time.sleep(1.0)  # Event.wait sem prazo não acorda com Ctrl+C no Windows
     except KeyboardInterrupt:
         print("\nencerrando...")
+    except Exception:
+        if journal is not None:
+            journal.finish_segment(interrupted=True, reason="processing_exception")
+        raise
     finally:
         parar.set()
         health.finish("stopped", "user_stop")
-        servidor.encerra()
+        try:
+            servidor.encerra()
+        finally:
+            if journal is not None:
+                journal.close()
     return 0
 
 

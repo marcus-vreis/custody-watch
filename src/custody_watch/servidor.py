@@ -87,6 +87,9 @@ class _Atendente(BaseHTTPRequestHandler):
         if sessao is None:
             self._recusa(409, "esta tela não tem sessão ao vivo para apontar")
             return
+        if self.server.painel.estado().get("fonte", {}).get("historical", False):
+            self._recusa(409, "imagem histórica: aguarde uma captura recente para apontar")
+            return
         tamanho = self.server.painel.tamanho()
         if tamanho is None:
             self._recusa(503, "nenhum quadro ainda")
@@ -333,6 +336,7 @@ section h2 {
 }
 section + section { margin-top: 20px; }
 #avisos:empty { display: none; }
+#journal:empty { display: none; }
 .aviso {
   background: var(--aviso-fundo); border: 1px solid var(--aviso-borda);
   border-radius: 6px; padding: 10px 12px; margin: 0 16px; margin-top: 12px;
@@ -365,6 +369,7 @@ tr.estranho td { color: var(--n3); font-weight: 600; }
   <span id="conexao">conectando…</span>
 </header>
 <div id="fonte" class="aviso" role="status" aria-live="polite">Fonte inicializando…</div>
+<div id="journal" class="aviso" role="status" aria-live="polite"></div>
 <div id="avisos"></div>
 <main>
   <div>
@@ -479,6 +484,34 @@ function desenhaFonte(fonte) {
   alvo.replaceChildren(el("b", "", (historica ? "Imagem histórica · " : "") + estado),
                        el("span", "detalhe", detalhes.join(" ")));
   document.getElementById("video").classList.toggle("historico", Boolean(historica));
+  btnBagagem.disabled = Boolean(historica);
+  btnDono.disabled = Boolean(historica) || ultimaBagagem === null;
+  if (historica && modo) modoAponta(null);
+}
+
+function desenhaJournal(journal) {
+  const alvo = document.getElementById("journal");
+  alvo.replaceChildren();
+  if (!journal) return;
+  let texto;
+  if (journal.state === "disabled") {
+    texto = "Histórico apenas em memória; gravação em disco desativada.";
+  }
+  else if (journal.state === "failed" || journal.unconfirmed_events > 0) {
+    texto = "Falha no histórico: " + journal.unconfirmed_events +
+            " eventos sem confirmação de gravação. Eventos recentes continuam em memória.";
+  } else {
+    texto = "Histórico em disco: " + journal.written_events + " eventos gravados.";
+    if (!journal.fsync) texto += " Sem confirmação de sincronização durável.";
+    else if (journal.pending_records || journal.synced_through !== journal.last_written_sequence) {
+      texto += " Sincronização pendente.";
+    } else texto += " Última gravação sincronizada.";
+  }
+  if (journal.retained_events !== undefined) {
+    texto += " Em memória: " + journal.retained_events +
+             " de " + journal.total_events + " eventos.";
+  }
+  alvo.append(el("span", "", texto));
 }
 
 async function atualiza() {
@@ -488,6 +521,7 @@ async function atualiza() {
     if (!r.ok) throw new Error("servidor indisponível");
     const e = await r.json();
     desenhaFonte(e.fonte);
+    desenhaJournal(e.journal);
     if (e.t !== undefined) {
       document.getElementById("t").textContent = relogio(e.t);
       document.getElementById("quadros").textContent = e.quadros;

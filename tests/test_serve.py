@@ -67,3 +67,86 @@ def test_timeout_valido_e_configuravel(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["serve.py", "0", "--source-timeout", "2.5"])
 
     assert serve._argumentos().source_timeout == 2.5
+
+
+def test_montagem_do_serve_liga_assertivas_humanas_ao_journal(tmp_path):
+    from custody_watch.config import Config
+    from custody_watch.journal_reader import iter_journal
+    from tests.test_occlusion import PLANO
+
+    args = argparse.Namespace(
+        journal_dir=tmp_path, journal_part_records=2, journal_fsync=False, event_tail=2
+    )
+    session, writer = serve._session(args, PLANO, Config())
+    try:
+        for x in (100.0, 500.0, 900.0):
+            session.aponta_bagagem(x, 100.0)
+        state = serve._journal_status(writer, session)
+        assert state["retained_events"] == 2
+        assert state["total_events"] == 3
+        assert state["written_events"] == 3
+    finally:
+        writer.close()
+    assert len([r for r in iter_journal(writer.directory) if r["kind"] == "event"]) == 3
+
+
+def test_sem_journal_a_tela_declara_historico_apenas_em_ram():
+    from custody_watch.config import Config
+    from tests.test_occlusion import PLANO
+
+    args = argparse.Namespace(
+        journal_dir=None, journal_part_records=10, journal_fsync=False, event_tail=2
+    )
+    session, writer = serve._session(args, PLANO, Config())
+
+    assert writer is None
+    assert serve._journal_status(writer, session) == {
+        "state": "disabled",
+        "retained_events": 0,
+        "total_events": 0,
+    }
+
+
+def test_main_fecha_segmento_de_arquivo_e_journal_sem_gpu(tmp_path, monkeypatch):
+    import numpy as np
+
+    from custody_watch.journal_reader import iter_journal
+
+    args = argparse.Namespace(
+        fonte="synthetic.mp4",
+        source_timeout=5.0,
+        config=None,
+        calibration=None,
+        metres_per_pixel=0.01,
+        journal_dir=tmp_path,
+        journal_part_records=10,
+        journal_fsync=False,
+        event_tail=10,
+        cert=None,
+        key=None,
+        host="127.0.0.1",
+        porta=0,
+        weights="unused.pt",
+        min_confidence=0.35,
+    )
+    monkeypatch.setattr(serve, "_argumentos", lambda: args)
+    monkeypatch.setattr(
+        serve,
+        "_fonte",
+        lambda *_args, **_kw: (
+            [(0.0, np.zeros((24, 32, 3), np.uint8))],
+            None,
+        ),
+    )
+    monkeypatch.setattr(serve, "detector_yolo", lambda *_args, **_kw: lambda _image: [])
+
+    def interrupt(_seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(serve.time, "sleep", interrupt)
+
+    assert serve.main() == 0
+    directory = next(tmp_path.iterdir())
+    records = list(iter_journal(directory))
+    assert [record["kind"] for record in records] == ["segment_start", "segment_end"]
+    assert records[-1]["payload"]["reason"] == "end_of_file"

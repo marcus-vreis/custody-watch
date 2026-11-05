@@ -9,13 +9,16 @@ forte carrega as medidas que o justificaram — extensão de cada trajetória,
 duração da sobreposição, separação máxima. Quando o operador contesta um
 alerta, a decisão é reproduzível a partir do log, sem o vídeo.
 
-Formato JSONL: uma linha por evento, append-only e streamável.
+O export legado é JSONL, uma linha por evento. Persistência incremental com
+sessão, segmento e rotação pertence a `event_journal.py`.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+import threading
+from collections import deque
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -85,34 +88,68 @@ class EventLog:
     A ordem de emissão é a ordem em que o sistema decidiu, que é o que importa
     para reproduzir o raciocínio. Ordenar por `t_start` esconderia decisões
     tomadas fora de ordem.
+
+    Sem `max_events`, mantém o comportamento legado de histórico completo.
+    Com limite, `len` e export JSONL cobrem somente a cauda; `total_events`
+    conta todas as emissões. O histórico completo fica com o sink opcional.
     """
 
-    def __init__(self, events: list[Event] | None = None) -> None:
-        self._events: list[Event] = list(events or [])
+    def __init__(
+        self,
+        events: list[Event] | None = None,
+        *,
+        max_events: int | None = None,
+        sink: Callable[[Event], bool] | None = None,
+    ) -> None:
+        if max_events is not None and (type(max_events) is not int or max_events <= 0):
+            raise ValueError("max_events: esperado inteiro positivo")
+        initial = list(events or [])
+        self._events = initial if max_events is None else deque(initial, maxlen=max_events)
+        self._bounded = max_events is not None
+        self._sink = sink
+        self._total_events = len(initial)
+        self._tail_lock = threading.Lock()
+        self._emit_lock = threading.Lock()
 
     def emit(self, event: Event) -> None:
-        self._events.append(event)
+        # A cauda continua disponível mesmo se o sink não confirmar a escrita.
+        # Consulta da UI não segura a trava de IO enquanto lê a cauda em RAM.
+        with self._emit_lock:
+            if self._sink is not None:
+                self._sink(event)
+            with self._tail_lock:
+                self._events.append(event)
+                self._total_events += 1
+
+    @property
+    def total_events(self) -> int:
+        with self._tail_lock:
+            return self._total_events
 
     def of_kind(self, kind: EventKind) -> list[Event]:
-        return [event for event in self._events if event.kind is kind]
+        with self._tail_lock:
+            return [event for event in self._events if event.kind is kind]
 
     def __iter__(self) -> Iterator[Event]:
-        return iter(self._events)
+        with self._tail_lock:
+            return iter(tuple(self._events) if self._bounded else self._events)
 
     def __reversed__(self) -> Iterator[Event]:
         """Do mais recente para o mais antigo. A tela ao vivo quer só a
-        cauda, e copiar o log inteiro a cada quadro custaria cada vez mais
-        numa câmera que roda por dias."""
-        return reversed(self._events)
+        cauda. Só a cauda limitada vira snapshot, para impedir mutação de uma
+        deque durante a iteração. O modo legado não copia o histórico todo."""
+        with self._tail_lock:
+            return reversed(tuple(self._events) if self._bounded else self._events)
 
     def __len__(self) -> int:
-        return len(self._events)
+        with self._tail_lock:
+            return len(self._events)
 
     def to_jsonl(self, path: Path | str) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
-            for event in self._events:
+            for event in self:
                 handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
     @classmethod

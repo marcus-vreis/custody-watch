@@ -192,9 +192,10 @@ def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSes
 class Painel:
     """O último quadro e o último estado, trocados entre duas threads."""
 
-    def __init__(self, source_health: SourceHealth | None = None) -> None:
+    def __init__(self, source_health: SourceHealth | None = None, journal_status=None) -> None:
         self._trava = threading.Lock()
         self._source_health = source_health
+        self._journal_status = journal_status
         self._jpeg: bytes | None = None
         self._estado: dict[str, Any] = {}
         self._tamanho: tuple[float, float] | None = None
@@ -228,6 +229,8 @@ class Painel:
         # Atualiza a idade na consulta HTTP, não só quando chegar outro frame.
         if self._source_health is not None:
             atual["fonte"] = self._source_health.snapshot()
+        if self._journal_status is not None:
+            atual["journal"] = self._journal_status()
         return atual
 
 
