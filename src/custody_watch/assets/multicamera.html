@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Laboratório multicâmera · custody-watch</title>
+  <link rel="stylesheet" href="/assets/multicamera.css">
+  <script src="/assets/multicamera.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">custody<span>watch</span><i aria-hidden="true"></i></a>
+    <span class="lab-tag">LABORATÓRIO</span>
+    <span class="top-note">Replay de gravações · sem câmeras ao vivo</span>
+  </header>
+  <main>
+    <section class="heading">
+      <div><p class="eyebrow">ACOMPANHAMENTO MULTICÂMERA</p><h1>Visão do ambiente</h1>
+        <p class="subtitle" id="site">Carregando ambiente…</p></div>
+      <div class="heading-controls"><label for="floor">Andar</label><select id="floor" aria-label="Andar"></select>
+        <span class="count" id="camera-count"></span></div>
+    </section>
+    <p id="error" class="error" role="alert" hidden></p>
+    <div class="workspace" id="workspace" aria-busy="true">
+      <section class="panel map-panel" aria-label="Planta do ambiente">
+        <div class="panel-heading"><div><h2>Planta e observações</h2><p id="coordinate-label"></p></div>
+          <span class="small-tag">METROS</span></div>
+        <div class="map-wrap"><svg id="map" viewBox="0 0 640 420" role="img" aria-label="Câmeras e observações locais na planta"></svg></div>
+        <div class="map-options"><label><input id="history" type="checkbox" checked> Últimas observações</label>
+          <span class="legend"><b class="dot"></b> Atual <b class="ghost-dot"></b> Histórica</span></div>
+        <p class="map-note">Cobertura declarada; oclusões não modeladas. IDs de câmeras diferentes permanecem separados.</p>
+      </section>
+      <section class="mosaic-panel" aria-label="Mosaico de câmeras">
+        <div class="mosaic-heading"><h2>Câmeras do andar</h2><span id="selected-label">Selecione uma câmera</span></div>
+        <div id="cameras" class="cameras"></div>
+      </section>
+    </div>
+    <section class="transport panel" aria-label="Controles do replay">
+      <div class="transport-top"><div class="transport-label"><span class="replay-dot"></span><strong>Replay sincronizado</strong><span id="loading" aria-live="polite"></span></div>
+        <span class="time-caption">TEMPO DO EXPERIMENTO <output id="clock">0,00 s</output></span></div>
+      <input id="timeline" type="range" min="0" max="1" step="0.05" value="0" aria-label="Tempo do replay">
+      <div class="transport-bottom"><div class="play-controls"><button id="reset" class="secondary" type="button">↤ <span>Voltar ao início</span></button>
+        <button id="play" class="primary" type="button">Reproduzir</button>
+        <label class="speed-label" for="speed">Velocidade <select id="speed"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label></div>
+        <span class="time-extent" id="extent"></span></div>
+    </section>
+    <footer>Laboratório de observações · associação entre câmeras e transferência de custódia ainda não implementadas.</footer>
+  </main>
+</body>
+</html>

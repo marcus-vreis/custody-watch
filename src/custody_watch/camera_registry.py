@@ -141,6 +141,7 @@ class CameraRecording:
     projection_frame_id: str | None
     clock: ReplayClock
     recording: RecordedSequence
+    recording_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -247,6 +248,7 @@ def _camera(base: Path, value, floors: dict[str, Floor]) -> CameraRecording:
         projection,
         clock,
         recording,
+        (base / data["recording"]["path"]).resolve(),
     )
 
 
