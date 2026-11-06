@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import pytest
 
@@ -39,6 +40,42 @@ def test_carrega_e_projeta(tmp_path):
     projetado = calibracao.plane.project(50.0, 50.0)
     assert projetado.x == pytest.approx(0.5, abs=1e-6)
     assert projetado.y == pytest.approx(0.5, abs=1e-6)
+
+
+@pytest.mark.parametrize("field", ["pixel", "world"])
+@pytest.mark.parametrize("axis", [0, 1])
+@pytest.mark.parametrize(
+    "value",
+    ["NaN", "Infinity", "1.0", True, None, float("nan"), float("inf"), float("-inf"), 10**400],
+)
+def test_coordenada_de_calibracao_exige_numero_finito(tmp_path, field, axis, value):
+    samples = deepcopy(QUADRADO)
+    samples[0][field][axis] = value
+    with pytest.raises(ValueError, match=rf"correspondences\[0\].{field}"):
+        load_calibration(escrever(tmp_path, correspondences=samples))
+
+
+@pytest.mark.parametrize("coordinates", [[], [0], [0, 0, 0], "00", {}, None])
+@pytest.mark.parametrize("field", ["pixel", "world"])
+def test_coordenadas_exigem_par_json_exato(tmp_path, field, coordinates):
+    samples = deepcopy(QUADRADO)
+    samples[0][field] = coordinates
+    with pytest.raises(ValueError, match=rf"correspondences\[0\].{field}"):
+        load_calibration(escrever(tmp_path, correspondences=samples))
+
+
+@pytest.mark.parametrize("samples", [None, {}, "abcd", [None] * 4, [{}] * 4])
+def test_correspondencias_malformadas_recusam_com_value_error(tmp_path, samples):
+    with pytest.raises(ValueError, match="correspondences"):
+        load_calibration(escrever(tmp_path, correspondences=samples))
+
+
+def test_residuo_nao_finito_nao_passa_pelo_comparador_de_teto(tmp_path, monkeypatch):
+    from custody_watch import calibration
+
+    monkeypatch.setattr(calibration, "reprojection_errors", lambda *_args: [float("nan")] * 4)
+    with pytest.raises(ValueError, match="resíduo.*finito"):
+        load_calibration(escrever(tmp_path))
 
 
 def test_camera_e_nota_sao_obrigatorias(tmp_path):
