@@ -47,6 +47,13 @@ Four principles carry the design:
 
 ## Running it
 
+Camera monitoring and a floor-plan view are part of the planned next stage.
+The current web panel handles one source; a camera registry, synchronized
+multi-view replay and cross-camera association are not implemented yet.
+See the [multi-camera roadmap](MULTICAMERA.md) for public virtual-lab datasets,
+incremental acceptance criteria and the distinction between observed tracks,
+uncertain associations and luggage ownership.
+
 No system Python needed; `uv` provides one.
 
 ```bash
