@@ -209,7 +209,8 @@ def _render_report(
     if omitted:
         bloco_aviso += BUDGET_NOTICE
 
-    return f"""<title>{html.escape(titulo)}</title>
+    return f"""<meta charset="utf-8">
+<title>{html.escape(titulo)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">

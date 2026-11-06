@@ -37,6 +37,12 @@ def test_pagina_tem_titulo_proprio():
     assert "<title>Revisão de Custódia</title>" in html
 
 
+def test_html_autocontido_declara_utf8_antes_do_texto_portugues():
+    document = render_report([sessao()], titulo="Revisão de Custódia 🧳").encode("utf-8")
+    assert b'<meta charset="utf-8">' in document[:1024]
+    assert document.index(b'<meta charset="utf-8">') < document.index(b"<title>")
+
+
 def test_conta_itens_e_duracao_no_placar():
     html = render_report([sessao(itens=[item(1), item(2)]), sessao("LeftBox")])
 
