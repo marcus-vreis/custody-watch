@@ -165,7 +165,7 @@
     $("play").textContent = "Pausar";
     timer = setInterval(() => {
       const t = origin + (performance.now() - began) / 1000 * speed;
-      seek(t);
+      void seek(t);
       if (t >= config.timeline.end_s) stop();
     }, 250);
   }
@@ -179,14 +179,14 @@
       selected = config.cameras.find(c => c.floor_id === $("floor").value)?.camera_id || null;
       $("timeline").min = String(config.timeline.start_s); $("timeline").max = String(config.timeline.end_s); $("timeline").step = String(config.timeline.step_s);
       $("extent").textContent = `${seconds(config.timeline.start_s)} — ${seconds(config.timeline.end_s)} · segundos relativos`;
-      $("timeline").addEventListener("input", event => { stop(); seek(Number(event.target.value)); });
+      $("timeline").addEventListener("input", event => { stop(); void seek(Number(event.target.value)); });
       $("play").addEventListener("click", () => timer ? stop() : start());
-      $("reset").addEventListener("click", () => { stop(); seek(config.timeline.start_s); });
+      $("reset").addEventListener("click", () => { stop(); void seek(config.timeline.start_s); });
       $("speed").addEventListener("change", () => { if (timer) { stop(); start(); } });
       $("floor").addEventListener("change", () => { selected = config.cameras.find(c => c.floor_id === $("floor").value)?.camera_id || null; render(); });
       $("history").addEventListener("change", renderMap);
       await seek(Math.max(config.timeline.start_s, Math.min(0, config.timeline.end_s)));
     } catch (error) { $("error").textContent = "Não foi possível carregar o laboratório. Verifique o servidor local."; $("error").hidden = false; }
   }
-  init();
+  void init();
 })();
