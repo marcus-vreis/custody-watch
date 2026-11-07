@@ -757,7 +757,7 @@ class _Session:
 
     def relational_flags(self, people: list[Observation]) -> None:
         """Flags N1 e N2. Regra P4: relação pessoa-bagagem, nunca atributo."""
-        for bag in self.registry.all():
+        for bag in self.registry.unresolved():
             if bag.state in TERMINAL_BAG_STATES or bag.state is BagState.AMBIGUA:
                 continue
 
@@ -795,7 +795,7 @@ class _Session:
                     )
 
     def resolve_removals(self, seen: set[int], people: list[Observation]) -> None:
-        for bag in self.registry.all():
+        for bag in self.registry.unresolved():
             if bag.state in TERMINAL_BAG_STATES or bag.state is BagState.AMBIGUA:
                 continue
 
@@ -957,7 +957,7 @@ class LiveSession:
         """Bagagens registradas cuja custódia ainda está em aberto."""
         return [
             b
-            for b in self._s.registry.all()
+            for b in self._s.registry.unresolved()
             if b.state not in TERMINAL_BAG_STATES and b.state is not BagState.AMBIGUA
         ]
 

@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 658 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 662 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -346,6 +346,18 @@ returned from 1 to 1. The blocked fake correctly failed recovery before the
 harness explicitly unblocked it for cleanup. These observations identify work
 for #30 and related identity/history retention; they establish no production
 availability, detector quality, RTSP reliability or universal throughput.
+
+The first #30 optimization keeps a separate nonterminal index for per-frame
+relational flags, removal checks and the panel's anchor list. Terminal entries
+leave that index on the next query, while `all()`, ownership, track aliases and
+tombstones remain available for audit. Ambiguous bags stay indexed. The
+[same-prefix result after indexing](benchmarks/cpu-synthetic-2026-11-04/after-index/summary.json)
+ends with 27 indexed references and all 128 historical records retained. A
+structural test forbids scanning the historical dictionary in those hot paths;
+another compares events, bag states, queue and ownership against full scanning.
+This reduces that scan's scope without establishing a total state bound.
+Registry retention, incomplete re-ID, inactive histories, flags and groups still
+require separate lifecycle policies. #30 remains partially addressed.
 
 `tracemalloc` measures allocations traced after its start, not every native
 allocation or VRAM. On Windows, process memory uses

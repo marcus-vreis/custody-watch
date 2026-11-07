@@ -17,6 +17,7 @@ from .types import TERMINAL_BAG_STATES, BagState
 RETENTION = {
     "bags": "sessão inteira; preservar posse ativa, terminal e referências de flags (#30)",
     "bag_links": "sessão inteira; aliases apontam para bag_id, não podem ressuscitar terminal",
+    "unresolved_index": "índice não terminal; terminal sai na próxima consulta; registro permanece",
     "active_bags": "bags não-terminais, incluindo ambíguas; não expirar custódia cegamente",
     "terminal_bags": "subconjunto de bags; tombstones impedem readoção de custódia resolvida",
     "ambiguous_bags": "subconjunto de bags; incerteza suprime sinais",
@@ -172,6 +173,7 @@ class SessionProbe:
             return {
                 "bags": len(bags),
                 "bag_links": len(s.registry._by_track),
+                "unresolved_index": len(s.registry._unresolved),
                 "active_bags": sum(b.state not in TERMINAL_BAG_STATES for b in bags),
                 "terminal_bags": sum(b.state in TERMINAL_BAG_STATES for b in bags),
                 "ambiguous_bags": sum(b.state is BagState.AMBIGUA for b in bags),

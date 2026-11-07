@@ -19,6 +19,41 @@ def test_registra_bagagem_nova():
     assert bag.is_orphan is True
 
 
+def test_indice_nao_terminal_nao_apaga_tombstone_posse_nem_alias():
+    registry = BagRegistry()
+    retired = registry.observe(obs(1, 5.0, 5.0))
+    current = registry.observe(obs(2, 10.0, 5.0))
+    registry.assign_owner(1, 99)
+    registry.link_track(101, 1)
+    retired.state = BagState.RETIRADA_DONO
+
+    assert registry.unresolved() == [current]
+    assert registry.unresolved() == [current]
+    assert registry.all() == [retired, current]
+    assert registry.get_by_track(101) is retired
+    assert retired.owner_party == 99
+    assert retired.state is BagState.RETIRADA_DONO
+
+
+def test_indice_mantem_ambigua_e_troca_terminal_sem_varrer_registro_completo():
+    registry = BagRegistry()
+    retired = registry.observe(obs(1, 5.0, 5.0))
+    uncertain = registry.observe(obs(2, 10.0, 5.0))
+    uncertain.state = BagState.AMBIGUA
+    retired.state = BagState.RETIRADA_ESTRANHO
+    assert registry.unresolved() == [uncertain]
+
+    class NoScan(dict):
+        def values(self):
+            pytest.fail("caminho não terminal não pode varrer tombstones")
+
+    registry._bags = NoScan(registry._bags)
+    assert registry.unresolved() == [uncertain]
+    uncertain.state = BagState.RETIRADA_DONO
+    assert registry.unresolved() == []
+    assert registry.get(1) is retired
+
+
 def test_bagagem_parada_mantem_a_ancora():
     """Regra P2: a posição é a identidade. Não usa aparência."""
     registry = BagRegistry()
