@@ -1,0 +1,283 @@
+{
+  "date": "2026-11-07",
+  "runs_per_dataset": 1,
+  "seed": null,
+  "parent_revision": "a6a5398900f8be5946e50228220a145c769e9f4c",
+  "working_tree_dirty": true,
+  "code_sha256": {
+    "src/custody_watch/ground_contacts.py": "be1c4a7d51e7e76ea4a4f933f0d06f3b8158fd447dd9491fc50fbe9d6f258b13",
+    "src/custody_watch/ground_contact_evaluation.py": "fa8aebbfdd3dbd0ffec345276365d2d2651be120024df89b9ef9636dc7eddac0",
+    "validation/measure_contact_cases.py": "ee17ba99604c33cd188557780e7ca1ca54074dd85b5066d458789df32dfbf0e5"
+  },
+  "scope": "Estimativas visuais exploratórias de modelo, sem revisão humana; um contato declarado por base, escolhido antes de comparar com gabarito. Não mede precisão de produção nem melhora de detector.",
+  "datasets": [
+    {
+      "dataset": "nvidia",
+      "mode": "oracle",
+      "schema_version": 1,
+      "evaluation": "ground_contact_declarations",
+      "registry_sha256": "97d206421b3f796fef74229eb4f0f10d069b7aa45937335ca70d43144018892b",
+      "evidence_sha256": "626c1267312e33d6eacf65458b5eb537fc9424666597efa3071ff205c5e07583",
+      "runs": 1,
+      "seed": null,
+      "scope": "Declarações e projeções diagnósticas; sem confiança validada ou associação.",
+      "counts": {
+        "observations": 132,
+        "labeled": 2,
+        "unlabeled": 130,
+        "observed_contacts": 1,
+        "occluded_contacts": 1,
+        "unknown_contacts": 130,
+        "contact_projections": 1,
+        "projection_abstentions": 131,
+        "qualified_positions": 0,
+        "association_abstentions": 132
+      },
+      "cameras": [
+        {
+          "camera_id": "Camera_0008",
+          "segment_id": "sample-1",
+          "sequence_sha256": "8264046cfac7d80e615206c9ee16a74daf8c7c40903d637cac5f5dce9df51a38",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "image_size_px": null,
+          "image_bounds": "not_declared"
+        },
+        {
+          "camera_id": "Camera_0019",
+          "segment_id": "sample-1",
+          "sequence_sha256": "0e62970290626023b5479777429a9d5ffe03ad75499b381a0793f1372f03601a",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "image_size_px": [
+            1920,
+            1080
+          ],
+          "image_bounds": "verified_source"
+        }
+      ],
+      "reference_input": {
+        "name": "ground_truth.prefix.json.part",
+        "sha256": "cf7f36c976d9053ecfe3d62c680bdbf34b577cad389b46ee0d2f22665ca713f7"
+      },
+      "compared_contacts": 1,
+      "contact_error_m": 0.019997079389693445,
+      "selected_observations": [
+        {
+          "schema_version": 1,
+          "camera_id": "Camera_0019",
+          "segment_id": "sample-1",
+          "sequence_sha256": "0e62970290626023b5479777429a9d5ffe03ad75499b381a0793f1372f03601a",
+          "frame_index": 5,
+          "local_track_id": 24,
+          "cls": "person",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "media_t": 2.5,
+          "t": 2.5,
+          "evidence_present": true,
+          "contact_status": "observed",
+          "contact_provenance": "model_prediction",
+          "contact_method": "Estimativa visual exploratória do contato entre os pés e o piso; sem revisão humana e sem consultar a posição 3D.",
+          "point_px": [
+            1644.0,
+            820.0
+          ],
+          "contact_projection_m": [
+            -0.9588312814380617,
+            -6.311930343112274
+          ],
+          "bbox_projection_m": [
+            -0.849099449359001,
+            -6.224092959498731
+          ],
+          "projection_frame_id": "nvidia-ground-m",
+          "projection_refusal": null,
+          "image_bounds": "verified_source",
+          "at_image_boundary": false,
+          "position_m": null,
+          "association_eligible": false,
+          "source_frame": 75,
+          "reference_world_m": [
+            -0.9625192353396774,
+            -6.292276280424441
+          ],
+          "reference_provenance": "ground_truth",
+          "contact_error_m": 0.019997079389693445,
+          "bbox_error_m": 0.1323367413243989
+        },
+        {
+          "schema_version": 1,
+          "camera_id": "Camera_0019",
+          "segment_id": "sample-1",
+          "sequence_sha256": "0e62970290626023b5479777429a9d5ffe03ad75499b381a0793f1372f03601a",
+          "frame_index": 5,
+          "local_track_id": 6,
+          "cls": "person",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "media_t": 2.5,
+          "t": 2.5,
+          "evidence_present": true,
+          "contact_status": "occluded",
+          "contact_provenance": "model_prediction",
+          "contact_method": "A caixa visível termina na cabeça atrás do corpo da anotação 24; não há contato no chão visível.",
+          "point_px": null,
+          "contact_projection_m": null,
+          "bbox_projection_m": [
+            -111.70814558723245,
+            -36.52949441475599
+          ],
+          "projection_frame_id": "nvidia-ground-m",
+          "projection_refusal": "contact_occluded",
+          "image_bounds": "verified_source",
+          "at_image_boundary": null,
+          "position_m": null,
+          "association_eligible": false,
+          "source_frame": 75,
+          "reference_world_m": [
+            -16.671279114603063,
+            -10.589689618725917
+          ],
+          "reference_provenance": "ground_truth",
+          "contact_error_m": null,
+          "bbox_error_m": 98.51334661756513
+        }
+      ]
+    },
+    {
+      "dataset": "wildtrack",
+      "mode": "oracle",
+      "schema_version": 1,
+      "evaluation": "ground_contact_declarations",
+      "registry_sha256": "d9e2600fbe42d37264dcc5b3478b79d52efadab05ff5fafa91dc83ed68e9309e",
+      "evidence_sha256": "bd87958f328a8a8f20ff0248d83b773afbd890ea60b77a6e88d6e7ec9d7aa06c",
+      "runs": 1,
+      "seed": null,
+      "scope": "Declarações e projeções diagnósticas; sem confiança validada ou associação.",
+      "counts": {
+        "observations": 422,
+        "labeled": 2,
+        "unlabeled": 420,
+        "observed_contacts": 1,
+        "occluded_contacts": 0,
+        "unknown_contacts": 421,
+        "contact_projections": 1,
+        "projection_abstentions": 421,
+        "qualified_positions": 0,
+        "association_abstentions": 422
+      },
+      "cameras": [
+        {
+          "camera_id": "C1",
+          "segment_id": "sample-1",
+          "sequence_sha256": "81080fb9b92c7156c5b82d0d93584288f3314f0bf3f8069712e1fbffc1d8ae6f",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "image_size_px": [
+            1920,
+            1080
+          ],
+          "image_bounds": "verified_source"
+        },
+        {
+          "camera_id": "C2",
+          "segment_id": "sample-1",
+          "sequence_sha256": "e6a1b9716d08cfc9ff5c328f03ca7d54c31ea28e1dffb738f289c42a062a8d3d",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "image_size_px": null,
+          "image_bounds": "not_declared"
+        }
+      ],
+      "reference_input": {
+        "name": "annotations_positions/00000025.json",
+        "sha256": "dfa479dcff29f22f0e3af0278de2ee5495c6d6469212be87c1b88e920b8078d8"
+      },
+      "compared_contacts": 1,
+      "contact_error_m": 0.4411485669091993,
+      "selected_observations": [
+        {
+          "schema_version": 1,
+          "camera_id": "C1",
+          "segment_id": "sample-1",
+          "sequence_sha256": "81080fb9b92c7156c5b82d0d93584288f3314f0bf3f8069712e1fbffc1d8ae6f",
+          "frame_index": 5,
+          "local_track_id": 4,
+          "cls": "person",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "media_t": 2.5,
+          "t": 2.5,
+          "evidence_present": true,
+          "contact_status": "observed",
+          "contact_provenance": "model_prediction",
+          "contact_method": "Estimativa visual exploratória entre os apoios dos pés no pavimento; sem revisão humana e sem consultar positionID.",
+          "point_px": [
+            850.0,
+            451.0
+          ],
+          "contact_projection_m": [
+            3.0384952107841996,
+            4.194497914902077
+          ],
+          "bbox_projection_m": [
+            3.1683977967098538,
+            3.8071265656353437
+          ],
+          "projection_frame_id": "wildtrack-ground-m",
+          "projection_refusal": null,
+          "image_bounds": "verified_source",
+          "at_image_boundary": false,
+          "position_m": null,
+          "association_eligible": false,
+          "source_frame": 25,
+          "reference_world_m": [
+            3.175,
+            3.775
+          ],
+          "reference_provenance": "ground_truth",
+          "contact_error_m": 0.4411485669091993,
+          "bbox_error_m": 0.03279794670107363
+        },
+        {
+          "schema_version": 1,
+          "camera_id": "C1",
+          "segment_id": "sample-1",
+          "sequence_sha256": "81080fb9b92c7156c5b82d0d93584288f3314f0bf3f8069712e1fbffc1d8ae6f",
+          "frame_index": 5,
+          "local_track_id": 41,
+          "cls": "person",
+          "mode": "oracle",
+          "cache_provenance": "ground_truth",
+          "media_t": 2.5,
+          "t": 2.5,
+          "evidence_present": true,
+          "contact_status": "unknown",
+          "contact_provenance": "model_prediction",
+          "contact_method": "Pés fora do campo visível pela borda inferior; contato não verificável nesta imagem.",
+          "point_px": null,
+          "contact_projection_m": null,
+          "bbox_projection_m": [
+            8.982147758161119,
+            -1.7928011339919587
+          ],
+          "projection_frame_id": "wildtrack-ground-m",
+          "projection_refusal": "contact_unknown",
+          "image_bounds": "verified_source",
+          "at_image_boundary": null,
+          "position_m": null,
+          "association_eligible": false,
+          "source_frame": 25,
+          "reference_world_m": [
+            8.875,
+            -1.85
+          ],
+          "reference_provenance": "ground_truth",
+          "contact_error_m": null,
+          "bbox_error_m": 0.12145926210692841
+        }
+      ]
+    }
+  ]
+}
