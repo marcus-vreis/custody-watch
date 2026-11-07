@@ -9,6 +9,7 @@ continuam planejadas. O roadmap separa implementações de validações ainda pe
 - [x] Executar recortes públicos NVIDIA e WILDTRACK no importador e no painel, em oracle.
 - [x] Recusar posições sem contato comprovado com o chão; projeção diagnóstica separada (#75).
 - [x] Definir evidência de contato por observação e avaliar casos exploratórios (#78).
+- [x] Selecionar IDs no quadro congelado, anotar contatos e exportar evidências (#89).
 - [ ] Validar confiabilidade e política de incerteza antes de liberar posições.
 - [ ] Medir associação conservadora entre vistas, incluindo recusas e ambiguidades.
 - [ ] Medir custódia entre vistas com anotações próprias de posse.
@@ -59,15 +60,16 @@ consulta a banco de identidades. Reconhecimento facial continua fora de escopo.
 ### Ajustes da interface ainda em aberto
 
 - [x] Ampliar câmera/zoom para inspecionar caixas pequenas do mosaico (#79).
-- Inspecionar um ID com câmera, quadro original, tempo e coordenadas; apresentar
-  comparação com gabarito apenas quando esse dado estiver disponível e rotulado.
+- [x] Inspecionar ID local, bbox, projeção diagnóstica e evidência de contato (#89).
+- Apresentar comparação com gabarito apenas quando disponível e rotulado.
 - Reduzir sobreposição e corte dos rótulos da planta em cenas densas.
 - Refinar hierarquia visual e navegação conforme os fluxos de acompanhamento.
 
 O link por câmera/instante já permite abrir casos específicos para revisão.
 A política conservadora da #75 recusa todas as posições dos caches atuais para
 associação; a planta só mostra essas projeções mediante opção diagnóstica explícita.
-Os ajustes de inspeção e um contrato de evidência de contato continuam pendentes.
+O contrato de evidência e a anotação no inspetor estão implementados;
+validação de confiança e comparação com gabarito na interface continuam pendentes.
 
 O botão **Ampliar** pausa o replay e congela o quadro exibido, com câmera,
 segmento, índice, tempo da imagem/mídia e idade ao abrir. O modal identifica
