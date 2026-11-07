@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "sequence_id": "synthetic-deposit",
+  "mode": "predictions",
+  "source": {
+    "kind": "synthetic",
+    "origin": "generated fixture",
+    "redistribution": "CC0-1.0",
+    "file": {
+      "path": "source.json",
+      "size_bytes": 58,
+      "sha256": "947a5f5436e01e8c16128aa7f95bedfe1e16fb9b05f07394f68a846f4036327f"
+    }
+  },
+  "predictions": {
+    "path": "predictions.jsonl",
+    "size_bytes": 10078,
+    "sha256": "a5f1ccf72304afd00db4055f4f63cbc39ae64ea0e89e91deeabe69c029d7334f",
+    "provenance": "synthetic"
+  },
+  "annotations": {
+    "path": "annotations.json",
+    "size_bytes": 136,
+    "sha256": "12837adc032060b4d2f5d9f67ba4272a9cca38fe9043b25589ff95ff594eb7f3"
+  },
+  "config": {
+    "path": "config.json",
+    "size_bytes": 3,
+    "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+  },
+  "geometry": {
+    "kind": "uniform_scale",
+    "metres_per_pixel": 0.01,
+    "limitation": "Cena sintética plana; não representa câmera real."
+  },
+  "clock": {
+    "fps": 1.0,
+    "start_s": 0.0,
+    "end_s": 45.0,
+    "frame_count": 46
+  },
+  "classes": [
+    "person",
+    "suitcase"
+  ],
+  "producer": {
+    "code_revision": "synthetic-fixture-v1",
+    "detector": "synthetic/1",
+    "tracker": "synthetic/1",
+    "weights_sha256": null,
+    "environment": {
+      "generator": "tests.recorded_fixture"
+    },
+    "command": [
+      "synthetic-fixture"
+    ],
+    "seeds": {}
+  },
+  "evaluation": {
+    "kinds": [
+      "bag_unattended"
+    ],
+    "lag_window_s": 27.0,
+    "slack_before_s": 1.0,
+    "target_rfa": 0.5
+  }
+}
