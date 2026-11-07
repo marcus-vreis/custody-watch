@@ -9,7 +9,15 @@ from collections.abc import Callable
 
 TERMINAL_STATES = frozenset({"interrupted", "completed", "stopped"})
 REASONS = frozenset(
-    {None, "read_failed", "capture_exception", "processing_exception", "user_stop", "end_of_file"}
+    {
+        None,
+        "read_failed",
+        "capture_exception",
+        "processing_exception",
+        "source_stale",
+        "user_stop",
+        "end_of_file",
+    }
 )
 
 
@@ -39,6 +47,7 @@ class SourceHealth:
         self._created_at = _finite(clock(), "clock")
         self._lock = threading.Lock()
         self._state = "initializing"
+        self._awaiting_image = False
         self._reason = None
         self._received_frames = self._processed_frames = 0
         self._received_at = self._processed_at = self._image_received_at = None
@@ -66,7 +75,16 @@ class SourceHealth:
             self._processed_frames += 1
             self._processed_at, self._processed_media_t = now, media_t
             self._image_received_at = received_at
+            self._awaiting_image = False
             self._processing_delay_s = max(0.0, now - received_at)
+
+    def restart(self) -> None:
+        """Reabre recepção; o JPEG anterior permanece histórico até publicação nova."""
+        with self._lock:
+            self._state, self._reason = "initializing", None
+            self._created_at = _finite(self._clock(), "clock")
+            self._received_at = None
+            self._awaiting_image = True
 
     def finish(self, state: str, reason: str | None = None) -> None:
         if state not in TERMINAL_STATES:
@@ -99,7 +117,8 @@ class SourceHealth:
                 "processing_delay_s": self._processing_delay_s,
                 "captured_media_t": self._captured_media_t,
                 "processed_media_t": self._processed_media_t,
-                "historical": state in TERMINAL_STATES
+                "historical": self._awaiting_image
+                or state in TERMINAL_STATES
                 or state == "stale"
                 or (image_age is not None and image_age > self.stale_after_s),
                 "stale_after_s": self.stale_after_s,

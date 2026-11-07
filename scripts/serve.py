@@ -41,6 +41,7 @@ from custody_watch.calibration import plane_from
 from custody_watch.config import Config, load_config
 from custody_watch.event_journal import JournalWriter
 from custody_watch.events import EventLog
+from custody_watch.live_recovery import LiveRecovery, RecoveryPolicy
 from custody_watch.orchestrator import LiveSession
 from custody_watch.painel import Painel
 from custody_watch.servidor import (
@@ -71,6 +72,16 @@ def _positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError("esperado inteiro positivo") from error
     if result <= 0:
         raise argparse.ArgumentTypeError("esperado inteiro positivo")
+    return result
+
+
+def _nonnegative_int(value: str) -> int:
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("esperado inteiro não negativo") from error
+    if result < 0:
+        raise argparse.ArgumentTypeError("esperado inteiro não negativo")
     return result
 
 
@@ -139,9 +150,38 @@ def _argumentos() -> argparse.Namespace:
         default=1000,
         help="máximo de eventos recentes em RAM; não apaga o journal",
     )
+    parser.add_argument(
+        "--reconnect-attempts",
+        type=_nonnegative_int,
+        default=0,
+        help="retries por interrupção; 0 desativa. Exige fonte live e journal",
+    )
+    parser.add_argument(
+        "--reconnect-backoff",
+        type=_positive_timeout,
+        default=1.0,
+        help="espera inicial entre tentativas em segundos",
+    )
+    parser.add_argument(
+        "--reconnect-max-backoff",
+        type=_positive_timeout,
+        default=30.0,
+        help="teto da espera exponencial em segundos",
+    )
+    parser.add_argument(
+        "--reconnect-close-timeout",
+        type=_positive_timeout,
+        default=1.0,
+        help="prazo para confirmar release; sem confirmação não reconecta",
+    )
     args = parser.parse_args()
     if args.journal_fsync and args.journal_dir is None:
         parser.error("--journal-fsync exige --journal-dir")
+    if args.reconnect_attempts:
+        if args.journal_dir is None:
+            parser.error("--reconnect-attempts exige --journal-dir")
+        if not fonte_de(args.fonte)[1] or args.passo != 1:
+            parser.error("reconexão exige fonte live e --passo 1; arquivo nunca reconecta")
     return args
 
 
@@ -172,6 +212,29 @@ def _journal_status(journal: JournalWriter | None, session: LiveSession) -> dict
         "retained_events": len(session.events),
         "total_events": session.events.total_events,
     }
+
+
+def _recovery_detector(args):
+    # Não entregar um Model ao YOLO: ele compartilha __dict__. Uma string
+    # absoluta existente cria predictor novo e evita download implícito.
+    weights = Path(args.weights).resolve()
+
+    def create():
+        if not weights.is_file():
+            raise ValueError("reconexão exige pesos locais existentes em --weights")
+        return detector_yolo(str(weights), min_confidence=args.min_confidence)
+
+    return create
+
+
+def _capture_factory(args):
+    target, _ = fonte_de(args.fonte)
+
+    def create():
+        # A CameraAoVivo é dona do release, inclusive de uma abertura malsucedida.
+        return cv2.VideoCapture(target)
+
+    return create
 
 
 def _servidor(args: argparse.Namespace, painel: Painel, sessao: LiveSession) -> Servidor:
@@ -230,21 +293,52 @@ def main() -> int:
     _, ao_vivo = fonte_de(args.fonte)
     health = SourceHealth("live" if ao_vivo else "file", stale_after_s=args.source_timeout)
     journal = None
+    servidor = None
+    recovery = None
+    reconnect = getattr(args, "reconnect_attempts", 0) > 0
     try:
         config = load_config(args.config) if args.config else Config()
         plane = plane_from(args.calibration, args.metres_per_pixel)
         sessao, journal = _session(args, plane, config)
         painel = Painel(
-            source_health=health, journal_status=lambda: _journal_status(journal, sessao)
+            source_health=health,
+            journal_status=lambda: _journal_status(
+                journal, recovery.session if recovery and recovery.session else sessao
+            ),
+            recovery_status=lambda: recovery.snapshot() if recovery else None,
         )
         servidor = _servidor(args, painel, sessao)
+        if reconnect:
+            if not Path(args.weights).resolve().is_file():
+                raise ValueError("reconexão exige pesos locais existentes em --weights")
+            recovery = LiveRecovery(
+                capture_factory=_capture_factory(args),
+                detector_factory=_recovery_detector(args),
+                session_factory=lambda log: LiveSession(plane, config, events=log),
+                journal=journal,
+                painel=painel,
+                health=health,
+                stop=parar,
+                policy=RecoveryPolicy(
+                    args.reconnect_attempts,
+                    args.reconnect_backoff,
+                    args.reconnect_max_backoff,
+                    args.reconnect_close_timeout,
+                ),
+                event_tail=args.event_tail,
+                on_session=servidor.set_session,
+                escala_uniforme=args.metres_per_pixel is not None,
+            )
+            servidor.set_session(None)
     except (ValueError, OSError) as erro:  # ssl.SSLError é OSError
+        if servidor is not None:
+            servidor.server_close()
         if journal is not None:
             journal.close(reason="initialization_failed")
         print(erro, file=sys.stderr)
         return 1
     try:
-        quadros, camera = _fonte(args, parar, source_health=health)
+        quadros, camera = (None, None) if reconnect else _fonte(args, parar, source_health=health)
     except ValueError as erro:
         if journal is not None:
             journal.close(reason="initialization_failed")
@@ -253,26 +347,35 @@ def main() -> int:
         return 1
 
     threading.Thread(target=servidor.serve_forever, daemon=True, name="servidor").start()
-    _anuncia(args, servidor, ao_vivo=camera is not None)
+    _anuncia(args, servidor, ao_vivo=ao_vivo)
 
     try:
-        processa(
-            quadros,
-            detector_yolo(args.weights, min_confidence=args.min_confidence),
-            sessao,
-            painel,
-            parar=parar,
-            escala_uniforme=args.metres_per_pixel is not None,
-            source_health=health,
-            capture_time=camera.received_at if camera is not None else None,
-        )
-        if journal is not None:
+        if recovery is not None:
+            recovery.run()
+            print("fonte encerrada; estado de reconexão disponível na tela. Ctrl+C encerra.")
+        else:
+            processa(
+                quadros,
+                detector_yolo(args.weights, min_confidence=args.min_confidence),
+                sessao,
+                painel,
+                parar=parar,
+                escala_uniforme=args.metres_per_pixel is not None,
+                source_health=health,
+                capture_time=camera.received_at if camera is not None else None,
+            )
+        if journal is not None and recovery is None:
             source = health.snapshot()
             interrupted = source["state"] == "interrupted"
             journal.finish_segment(
                 interrupted=interrupted, reason=source["reason"] if interrupted else "end_of_file"
             )
-        _relata_fim(sessao, camera)
+        if recovery is None:
+            if camera is not None:
+                camera.close(reason=health.snapshot()["reason"] or "read_failed")
+                if not camera.wait_closed(1.0):
+                    print("liberação da captura não confirmada", file=sys.stderr)
+            _relata_fim(sessao, camera)
         while True:
             time.sleep(1.0)  # Event.wait sem prazo não acorda com Ctrl+C no Windows
     except KeyboardInterrupt:
@@ -283,6 +386,10 @@ def main() -> int:
         raise
     finally:
         parar.set()
+        if camera is not None:
+            camera.close()
+            if not camera.wait_closed(1.0):
+                print("liberação da captura não confirmada", file=sys.stderr)
         health.finish("stopped", "user_stop")
         try:
             servidor.encerra()

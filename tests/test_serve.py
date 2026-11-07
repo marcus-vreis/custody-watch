@@ -69,6 +69,43 @@ def test_timeout_valido_e_configuravel(monkeypatch):
     assert serve._argumentos().source_timeout == 2.5
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["0", "--reconnect-attempts", "-1", "--journal-dir", "journal"],
+        ["0", "--reconnect-attempts", "2"],
+        ["file.mp4", "--reconnect-attempts", "2", "--journal-dir", "journal"],
+        ["0", "--reconnect-attempts", "2", "--journal-dir", "journal", "--passo", "2"],
+        ["0", "--reconnect-backoff", "nan"],
+        ["0", "--reconnect-close-timeout", "0"],
+    ],
+)
+def test_reconnect_recusa_configuracao_invalida_antes_de_abrir_fonte(monkeypatch, extra):
+    monkeypatch.setattr(sys, "argv", ["serve.py", *extra])
+    with pytest.raises(SystemExit) as error:
+        serve._argumentos()
+    assert error.value.code == 2
+
+
+def test_reconnect_e_opt_in_e_exige_pesos_locais_a_cada_reset(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["serve.py", "0"])
+    assert serve._argumentos().reconnect_attempts == 0
+    args = argparse.Namespace(weights=str(tmp_path / "missing.pt"), min_confidence=0.35)
+    with pytest.raises(ValueError, match="pesos locais"):
+        serve._recovery_detector(args)()
+    weights = tmp_path / "local.pt"
+    weights.write_bytes(b"not-a-real-model")
+    args.weights = str(weights)
+    seen = []
+    monkeypatch.setattr(serve, "detector_yolo", lambda path, **kw: seen.append(path) or object())
+    factory = serve._recovery_detector(args)
+    assert factory() is not factory()
+    assert seen == [str(weights.resolve())] * 2
+    weights.rename(tmp_path / "moved.pt")
+    with pytest.raises(ValueError, match="pesos locais"):
+        factory()
+
+
 def test_montagem_do_serve_liga_assertivas_humanas_ao_journal(tmp_path):
     from custody_watch.config import Config
     from custody_watch.journal_reader import iter_journal

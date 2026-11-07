@@ -6,6 +6,8 @@ import json
 import os
 import re
 import threading
+import time
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from uuid import uuid4
@@ -40,6 +42,7 @@ class JournalWriter:
         session_id: str | None = None,
         max_records_per_file: int = 10000,
         fsync: bool = False,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if type(max_records_per_file) is not int or max_records_per_file <= 0:
             raise ValueError("max_records_per_file: esperado inteiro positivo")
@@ -56,6 +59,7 @@ class JournalWriter:
         self.directory.mkdir(exist_ok=False)
         self._max_records = max_records_per_file
         self._fsync = fsync
+        self._clock = clock
         self._io_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._handle = None
@@ -133,7 +137,17 @@ class JournalWriter:
             with self._state_lock:
                 self._pending_records = 0
 
-    def start_segment(self, *, reason: str = "reconnected") -> str | None:
+    def _lifecycle(self, reason, gap_start_s=None, gap_end_s=None) -> dict:
+        payload = {"reason": reason, "local_monotonic_s": self._clock()}
+        if gap_start_s is not None:
+            payload["gap_start_s"] = gap_start_s
+        if gap_end_s is not None:
+            payload["gap_end_s"] = gap_end_s
+        return payload
+
+    def start_segment(
+        self, *, reason: str = "reconnected", gap_start_s=None, gap_end_s=None
+    ) -> str | None:
         if reason not in START_REASONS:
             raise ValueError("reason de início inválido")
         with self._io_lock:
@@ -142,7 +156,9 @@ class JournalWriter:
             if self._active_segment is not None:
                 raise ValueError("feche o segmento anterior antes de iniciar outro")
             segment_id = uuid4().hex
-            if not self._write("segment_start", {"reason": reason}, segment_id):
+            if not self._write(
+                "segment_start", self._lifecycle(reason, gap_start_s, gap_end_s), segment_id
+            ):
                 return None
             with self._state_lock:
                 self._active_segment = segment_id
@@ -171,23 +187,34 @@ class JournalWriter:
                     self._unconfirmed_events += 1
             return written
 
-    def _finish_segment(self, interrupted: bool, reason: str) -> bool:
+    def _finish_segment(
+        self, interrupted: bool, reason: str, gap_start_s=None, gap_end_s=None
+    ) -> bool:
         if self._active_segment is None:
             return True
         if self._closed or self._state == "failed":
             return False
         kind = "segment_interrupted" if interrupted else "segment_end"
-        if not self._write(kind, {"reason": reason}, self._active_segment):
+        if not self._write(
+            kind, self._lifecycle(reason, gap_start_s, gap_end_s), self._active_segment
+        ):
             return False
         with self._state_lock:
             self._active_segment = None
         return True
 
-    def finish_segment(self, *, interrupted: bool = False, reason: str = "user_stop") -> bool:
+    def finish_segment(
+        self,
+        *,
+        interrupted: bool = False,
+        reason: str = "user_stop",
+        gap_start_s=None,
+        gap_end_s=None,
+    ) -> bool:
         if reason not in (INTERRUPTION_REASONS if interrupted else END_REASONS):
             raise ValueError("reason de encerramento inválido")
         with self._io_lock:
-            return self._finish_segment(interrupted, reason)
+            return self._finish_segment(interrupted, reason, gap_start_s, gap_end_s)
 
     def close(self, *, reason: str = "user_stop") -> None:
         if reason not in END_REASONS:

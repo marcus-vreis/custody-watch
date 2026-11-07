@@ -22,7 +22,7 @@ import ssl
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from .orchestrator import LiveSession
 from .painel import Painel
@@ -61,7 +61,8 @@ class _Atendente(BaseHTTPRequestHandler):
             corpo = json.dumps(painel.estado(), ensure_ascii=False).encode("utf-8")
             self._envia(200, "application/json; charset=utf-8", corpo)
         elif rota == "/quadro.jpg":
-            jpeg = painel.jpeg()
+            segment = parse_qs(urlsplit(self.path).query).get("segment_id", [None])[0]
+            jpeg = painel.jpeg(segment)
             if jpeg is None:
                 self._envia(503, "text/plain; charset=utf-8", b"nenhum quadro ainda")
             else:
@@ -83,11 +84,28 @@ class _Atendente(BaseHTTPRequestHandler):
             self._envia(404, "text/plain; charset=utf-8", "não existe".encode())
             return
 
+        try:
+            pedido = self._corpo()
+        except (ValueError, TypeError) as erro:
+            self._recusa(400, str(erro) or "pedido inválido")
+            return
+        # Ler corpo de rede fora da trava: cliente lento não atrasa a troca.
+        with self.server.session_lock:
+            self._aponta(rota, pedido)
+
+    def _aponta(self, rota: str, pedido: dict) -> None:
         sessao = self.server.sessao
         if sessao is None:
             self._recusa(409, "esta tela não tem sessão ao vivo para apontar")
             return
-        if self.server.painel.estado().get("fonte", {}).get("historical", False):
+        atual = self.server.painel.estado()
+        segment = self.server.segment_id
+        if segment is not None and (
+            pedido.get("segment_id") != segment or atual.get("segment_id") != segment
+        ):
+            self._recusa(409, "segmento mudou: aguarde a imagem da sessão atual")
+            return
+        if atual.get("fonte", {}).get("historical", False):
             self._recusa(409, "imagem histórica: aguarde uma captura recente para apontar")
             return
         tamanho = self.server.painel.tamanho()
@@ -96,7 +114,6 @@ class _Atendente(BaseHTTPRequestHandler):
             return
 
         try:
-            pedido = self._corpo()
             px, py = _ponto(pedido, tamanho)
             if rota == "/ancora":
                 bagagem = sessao.aponta_bagagem(px, py)
@@ -215,6 +232,8 @@ class Servidor(ThreadingHTTPServer):
             )
         self.painel = painel
         self.sessao = sessao
+        self.segment_id = None
+        self.session_lock = threading.Lock()
         """A sessão ao vivo, quando existe. Sem ela a tela é só leitura: uma
         gravação já encerrada não pode ganhar âncora nenhuma."""
         self.encerrando = threading.Event()
@@ -229,6 +248,11 @@ class Servidor(ThreadingHTTPServer):
             self.socket = tls.wrap_socket(
                 self.socket, server_side=True, do_handshake_on_connect=False
             )
+
+    def set_session(self, sessao: LiveSession | None, segment_id: str | None = None) -> None:
+        """Troca atômica com os POSTs; referência velha nunca escreve na sessão nova."""
+        with self.session_lock:
+            self.sessao, self.segment_id = sessao, segment_id
 
     @property
     def cifrado(self) -> bool:
@@ -369,6 +393,7 @@ tr.estranho td { color: var(--n3); font-weight: 600; }
   <span id="conexao">conectando…</span>
 </header>
 <div id="fonte" class="aviso" role="status" aria-live="polite">Fonte inicializando…</div>
+<div id="recovery" class="aviso" role="status" aria-live="polite" hidden></div>
 <div id="journal" class="aviso" role="status" aria-live="polite"></div>
 <div id="avisos"></div>
 <main>
@@ -489,6 +514,59 @@ function desenhaFonte(fonte) {
   if (historica && modo) modoAponta(null);
 }
 
+function desenhaRecovery(recovery, segmento) {
+  const alvo = document.getElementById("recovery");
+  alvo.hidden = !recovery;
+  if (!recovery) return;
+  const estados = {
+    initializing: "Reconexão inicializando", connecting: "Abrindo captura",
+    loading_detector: "Iniciando detector novo", active: "Segmento ativo",
+    backoff: "Aguardando nova tentativa", exhausted: "Tentativas de reconexão esgotadas",
+    failed: "Reconexão interrompida", stopped: "Reconexão encerrada",
+  };
+  const motivos = {
+    cleanup_unconfirmed: "liberação da captura anterior não confirmada",
+    permanent_source_error: "erro permanente da fonte", journal_failed: "falha no histórico",
+    processing_failed: "falha ao iniciar ou executar o detector",
+    source_stale: "lacuna na recepção", read_failed: "leitura interrompida",
+    capture_exception: "erro de captura", user_stop: "parada solicitada",
+  };
+  let texto = estados[recovery.state] || "Estado de reconexão indisponível";
+  if (recovery.reason) texto += ": " + (motivos[recovery.reason] || "erro operacional");
+  texto += " · tentativas nesta interrupção: " + recovery.retries;
+  if (recovery.backoff_s !== null) texto += " · espera de " + recovery.backoff_s.toFixed(1) + " s";
+  if (segmento) texto += ". Imagem do segmento " + segmento;
+  texto += ". Uma lacuna inicia nova custódia; associações anteriores ficam no histórico.";
+  alvo.textContent = texto;
+}
+
+async function quadroDoSegmento(segmento) {
+  // /estado e MJPEG são conexões independentes. No modo reconectável, só
+  // habilitar cliques depois de decodificar um JPEG do namespace pedido.
+  const r = await fetch("/quadro.jpg?segment_id=" + encodeURIComponent(segmento),
+                        { cache: "no-store" });
+  if (!r.ok) throw new Error("aguardando quadro do segmento");
+  const url = URL.createObjectURL(await r.blob());
+  const imagem = new Image();
+  try {
+    imagem.src = url;
+    await imagem.decode();
+    video.src = url;
+    await video.decode();
+    if (quadroURL) URL.revokeObjectURL(quadroURL);
+    quadroURL = url;
+  } catch (erro) {
+    URL.revokeObjectURL(url);
+    throw erro;
+  }
+  if (segmento !== segmentoExibido) {
+    ultimaBagagem = null;
+    modo = null;
+    modoAponta(null);
+    segmentoExibido = segmento;
+  }
+}
+
 function desenhaJournal(journal) {
   const alvo = document.getElementById("journal");
   alvo.replaceChildren();
@@ -520,6 +598,8 @@ async function atualiza() {
     const r = await fetch("/estado", { cache: "no-store" });
     if (!r.ok) throw new Error("servidor indisponível");
     const e = await r.json();
+    desenhaRecovery(e.recovery, e.segment_id);
+    if (e.segment_id) await quadroDoSegmento(e.segment_id);
     desenhaFonte(e.fonte);
     desenhaJournal(e.journal);
     if (e.t !== undefined) {
@@ -547,6 +627,8 @@ const btnBagagem = document.getElementById("btn-bagagem");
 const btnDono = document.getElementById("btn-dono");
 let modo = null;
 let ultimaBagagem = null;
+let segmentoExibido = null;
+let quadroURL = null;
 
 function diz(texto, erro) {
   instrucao.textContent = texto;
@@ -580,10 +662,12 @@ video.addEventListener("click", async (evento) => {
   const carga = {
     x: (evento.clientX - area.left) / area.width,
     y: (evento.clientY - area.top) / area.height,
+    segment_id: segmentoExibido,
   };
   try {
     if (modo === "bagagem") {
       const corpo = await aponta("/ancora", carga);
+      if (carga.segment_id !== segmentoExibido) return;
       ultimaBagagem = corpo.bagagem;
       btnDono.disabled = false;
       modo = null;
@@ -591,6 +675,7 @@ video.addEventListener("click", async (evento) => {
     } else {
       carga.bagagem = ultimaBagagem;
       const corpo = await aponta("/dono", carga);
+      if (carga.segment_id !== segmentoExibido) return;
       modoAponta(null);
       diz("Bagagem " + corpo.bagagem + " com dono.");
     }
@@ -607,7 +692,9 @@ document.addEventListener("keydown", (e) => {
 
 // O servidor caiu ou reiniciou: tenta de novo, sem recarregar a página.
 video.addEventListener("error", () => {
-  setTimeout(() => { video.src = "/video?" + Date.now(); }, 1000);
+  if (segmentoExibido === null) {
+    setTimeout(() => { video.src = "/video?" + Date.now(); }, 1000);
+  }
 });
 atualiza();
 </script>

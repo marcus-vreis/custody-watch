@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 612 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 649 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -90,7 +90,42 @@ capture used for the displayed image, so fresh reception cannot hide slow
 processing. These are local monotonic measurements; they do not measure delay
 upstream of the capture backend. Source health never creates custody flags.
 Application URL source labels omit credentials, the URL path and query strings.
-Reconnection is not implemented by this health indication.
+
+Reconnection is opt-in and requires the incremental journal and an existing local
+weights file (no automatic download during a retry):
+
+```powershell
+.venv\Scripts\python.exe scripts/serve.py 0 --calibration ground.json --weights C:/models/yolo26n.pt --journal-dir outputs/journal --reconnect-attempts 3
+```
+
+`--reconnect-backoff` starts the exponential wait (default 1 s), capped by
+`--reconnect-max-backoff` (30 s). The retry budget applies to each interruption;
+publishing a frame from the new segment renews it. Cancellation interrupts capture
+waiting and backoff. `--reconnect-close-timeout` (1 s) bounds waiting for the old
+capture thread to release its resource. If native open/read/release is still
+blocked, the supervisor fails visibly and opens no replacement. It cannot forcibly
+cancel native backend calls. Exhaustion, permanent errors declared by the factory,
+processing failures and journal failures remain visible. OpenCV authentication
+failures are not classified as permanent automatically; they consume the bounded
+retry budget. Finite files are never reopened.
+
+A reception gap longer than the source timeout ends the association, even if the
+same connection resumes. Each recovered segment creates a new detector/tracker
+and `LiveSession`; raw IDs, groups and ownership do not cross the gap. A new bag
+observation needs new ownership evidence. The old segment stays in the journal,
+with its reason, local monotonic timestamp and observed gap bounds. Event times
+are local to their segment. No event is inferred inside the unobserved interval.
+Tracker reconstruction is sequential: the installed Ultralytics 8.4.126 source
+uses a global tracker ID counter, so concurrent reset is unsafe. Backend load time
+is reported as `recovery.detector_load_s`; it has not been measured with real
+weights here. This source inspection and synthetic CPU tests do not establish
+physical RTSP or GPU behavior.
+
+The recovery screen uses a JPEG qualified by segment at each state refresh
+(about 2 Hz), so a click cannot adopt metadata from a different MJPEG connection.
+Pointing requests include that segment ID and are refused after a segment change
+or while the image is historical. The server continues serving the final state
+after retries fail; Ctrl+C closes it.
 
 **The operator can point at what the detector cannot see.** On the live screen, *Apontar bagagem* turns a click into an anchor at that spot, and *Apontar dono* attaches an owner to it; both are recorded in the event log as `origem: operador`, so a human assertion is never confused with a detection. This exists because of a measurement, not a hunch: across the four MEVA thefts, in the 90 s each bag sits still before it is taken, the detector produces **zero** bag boxes over it — and neither a bigger model (`yolo26x`) nor a 4× zoomed crop changes that zero, even at a confidence of 0.05. A pointed anchor is watched by the same rules as any other: it goes unattended when its owner walks away, and a stranger who touches it is ranked. It buys nothing it cannot see, though — with no bag detections there is no removal to observe, so theft of an invisible bag stays out of reach.
 
@@ -285,6 +320,9 @@ The version 1 envelope has `session_id`, `segment_id`, contiguous `sequence`,
 payloads retain `Event.to_dict`, including negative bag IDs and human
 `origem: operador`. The journal adds no frames, appearance descriptors, camera
 URLs or personal paths. Source/storage failures never become custody flags.
+Lifecycle payloads optionally carry `local_monotonic_s`, `gap_start_s` and
+`gap_end_s`; the reader still accepts older version 1 payloads containing only
+`reason`. These clocks are local to this process and are not UTC timestamps.
 
 | Confirmation | Meaning |
 |---|---|

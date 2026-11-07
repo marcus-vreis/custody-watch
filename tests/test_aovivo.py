@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from custody_watch.aovivo import CameraAoVivo, fonte_de, processa, quadros_de_arquivo
+from custody_watch.aovivo import CameraAoVivo, CaptureGap, fonte_de, processa, quadros_de_arquivo
 from custody_watch.config import Config
 from custody_watch.orchestrator import LiveSession
 from custody_watch.painel import Painel
@@ -48,6 +48,30 @@ def test_processa_para_quando_pedem():
     processa(_quadros_de(cena), _detector_de(cena), sessao, Painel(), parar=parar)
 
     assert sessao.frames == 0
+
+
+def test_lacuna_nao_alimenta_sessao_com_passagem_de_tempo_sem_observacao():
+    from custody_watch.source_health import SourceHealth
+
+    def frames():
+        yield 0.0, np.zeros((24, 32, 3), np.uint8)
+        raise CaptureGap(100.0, 200.0)
+
+    health = SourceHealth("live")
+    session = LiveSession(PLANO, Config())
+    health.received(0.0)
+    processa(
+        frames(),
+        lambda _: [],
+        session,
+        Painel(),
+        source_health=health,
+        capture_time=lambda _: 100.0,
+    )
+    assert session.frames == 1
+    assert session.t == 0.0
+    assert len(session.events) == 0
+    assert health.snapshot()["reason"] == "source_stale"
 
 
 def _pessoas_em_perspectiva():

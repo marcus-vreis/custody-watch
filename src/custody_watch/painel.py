@@ -192,10 +192,13 @@ def desenha(quadro: np.ndarray, tracked: list[TrackedDetection], sessao: LiveSes
 class Painel:
     """O último quadro e o último estado, trocados entre duas threads."""
 
-    def __init__(self, source_health: SourceHealth | None = None, journal_status=None) -> None:
+    def __init__(
+        self, source_health: SourceHealth | None = None, journal_status=None, recovery_status=None
+    ) -> None:
         self._trava = threading.Lock()
         self._source_health = source_health
         self._journal_status = journal_status
+        self._recovery_status = recovery_status
         self._jpeg: bytes | None = None
         self._estado: dict[str, Any] = {}
         self._tamanho: tuple[float, float] | None = None
@@ -219,8 +222,10 @@ class Painel:
         with self._trava:
             return self._tamanho
 
-    def jpeg(self) -> bytes | None:
+    def jpeg(self, segment_id: str | None = None) -> bytes | None:
         with self._trava:
+            if segment_id is not None and self._estado.get("segment_id") != segment_id:
+                return None
             return self._jpeg
 
     def estado(self) -> dict[str, Any]:
@@ -231,6 +236,8 @@ class Painel:
             atual["fonte"] = self._source_health.snapshot()
         if self._journal_status is not None:
             atual["journal"] = self._journal_status()
+        if self._recovery_status is not None:
+            atual["recovery"] = self._recovery_status()
         return atual
 
 
