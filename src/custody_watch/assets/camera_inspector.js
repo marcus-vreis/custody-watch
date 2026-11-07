@@ -13,7 +13,14 @@ function inspectionTarget(camera, snapshot) {
     frame_index: String(image.frame_index),
     resolution: "source",
   });
+  const hashes = {};
+  const names = ["registry_sha256", "sequence_sha256"];
+  if (names.some(name => image[name] !== undefined)) {
+    if (!names.every(name => typeof image[name] === "string" && /^[a-f0-9]{64}$/.test(image[name]))) return null;
+    for (const name of names) { query.set(name, image[name]); hashes[name] = image[name]; }
+  }
   return Object.freeze({
+    ...hashes,
     camera_id: camera.camera_id,
     segment_id: camera.segment_id,
     frame_index: image.frame_index,

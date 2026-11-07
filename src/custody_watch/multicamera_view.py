@@ -21,8 +21,9 @@ def _xy(point):
 
 
 class _CameraTimeline:
-    def __init__(self, camera: CameraRecording):
+    def __init__(self, camera: CameraRecording, registry_sha256: str):
         self.camera = camera
+        self.registry_sha256 = registry_sha256
         clock = camera.recording.manifest["clock"]
         self.period = finite_number(1 / clock["fps"], "período do replay")
         self.start = camera.clock.global_time(clock["start_s"])
@@ -87,6 +88,8 @@ class _CameraTimeline:
                     "camera_id": camera.camera_id,
                     "segment_id": camera.segment_id,
                     "frame_index": observed["frame_index"],
+                    "registry_sha256": self.registry_sha256,
+                    "sequence_sha256": camera.recording.manifest_sha256,
                 }
             )
             image = {
@@ -97,6 +100,9 @@ class _CameraTimeline:
                 "age_s": finite_number(t - observed["t"], "idade da imagem"),
                 "historical": status != "observed",
                 "kind": kind,
+                "registry_sha256": self.registry_sha256,
+                "sequence_sha256": camera.recording.manifest_sha256,
+                "tracks": observed["tracks"],
             }
         return {
             "camera_id": camera.camera_id,
@@ -116,7 +122,7 @@ class ReplayView:
     def __init__(self, registry: CameraRegistry):
         self.registry = registry
         self._cameras = tuple(
-            _CameraTimeline(camera)
+            _CameraTimeline(camera, registry.manifest_sha256)
             for camera in sorted(registry.cameras, key=lambda camera: camera.camera_id)
         )
 
@@ -124,6 +130,7 @@ class ReplayView:
         registry = self.registry
         return {
             "schema_version": 2,
+            "registry_sha256": registry.manifest_sha256,
             "site_id": registry.site_id,
             "position_method": "unverified_bbox_bottom_projection",
             "floors": [asdict(floor) for floor in registry.floors],
@@ -139,6 +146,7 @@ class ReplayView:
                     "camera_id": c.camera_id,
                     "floor_id": c.floor_id,
                     "segment_id": c.segment_id,
+                    "sequence_sha256": c.recording.manifest_sha256,
                     "position_m": _xy(c.position_m),
                     "coverage_m": None if c.coverage_m is None else [_xy(p) for p in c.coverage_m],
                     "projection_frame_id": c.projection_frame_id,

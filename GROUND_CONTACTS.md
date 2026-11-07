@@ -49,6 +49,19 @@ em resultados separados e rotulados. Não fornecem `status` de contato, confian�
 de produção ou revisão humana. Sem medição independente e política explícita,
 uma declaração de contato não libera posição para associação.
 
+## Vínculo da imagem para revisão
+
+A configuração do laboratório identifica `registry_sha256` e cada câmera
+identifica `sequence_sha256`. O descriptor `image` repete esses hashes e contém
+`tracks` somente do quadro de imagem indicado, inclusive quando histórico.
+Uma imagem vazia não empresta os últimos tracks de outro quadro.
+
+Os URLs novos de imagem incluem ambos os hashes. O servidor recusa hashes
+incompatíveis, incompletos ou repetidos, impedindo reutilizar o mesmo URL depois
+de trocar cadastro/sequência. URLs antigos sem o par continuam disponíveis para
+compatibilidade de inspeção; a revisão/exportação requer o vínculo completo.
+Os hashes não qualificam contato, calibração ou confiança de produção.
+
 ## Executar a avaliação offline
 
 ```powershell

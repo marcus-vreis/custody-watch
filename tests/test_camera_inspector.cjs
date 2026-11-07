@@ -89,3 +89,23 @@ test("relógio inválido não é apresentado como imagem válida", () => {
   state.image.t = Infinity;
   assert.equal(inspectionTarget(camera, state), null);
 });
+
+test("inspeção preserva os hashes que vinculam a imagem", () => {
+  const state = snapshot();
+  state.image.registry_sha256 = "a".repeat(64);
+  state.image.sequence_sha256 = "b".repeat(64);
+  const target = inspectionTarget(camera, state);
+  const url = new URL(target.url, "http://localhost");
+  assert.equal(url.searchParams.get("registry_sha256"), state.image.registry_sha256);
+  assert.equal(url.searchParams.get("sequence_sha256"), state.image.sequence_sha256);
+  assert.equal(target.registry_sha256, state.image.registry_sha256);
+  assert.equal(target.sequence_sha256, state.image.sequence_sha256);
+});
+
+test("hash incompleto ou inválido impede inspeção com vínculo incorreto", () => {
+  const state = snapshot();
+  state.image.registry_sha256 = "a".repeat(64);
+  assert.equal(inspectionTarget(camera, state), null);
+  state.image.sequence_sha256 = "inválido";
+  assert.equal(inspectionTarget(camera, state), null);
+});
