@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 824 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 838 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -72,6 +72,10 @@ GPU. Missing/stale/completed cameras retain explicitly historical images, with
 their own timestamps and ages. Cross-camera identity and custody remain planned.
 See the [multi-camera contract and roadmap](MULTICAMERA.md) for data sources,
 coordinate conventions and incremental acceptance criteria.
+Public NVIDIA and WILDTRACK clips have now been imported and replayed in oracle
+mode. The [validation record](PUBLIC_DATASET_VALIDATION.md) documents a ground
+projection failure under occlusion and the pending authorized access to MTMMC.
+These runs do not validate detection, cross-camera identity or luggage custody.
 
 No system Python needed; `uv` provides one.
 

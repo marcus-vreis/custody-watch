@@ -6,13 +6,16 @@ continuam planejadas. Os recortes abaixo não têm números de issues atribuído
 
 - [x] Cadastro de ambiente e relógio comum de replay.
 - [x] Mosaico, planta e navegação sincronizada com fixtures e vídeo local gerado.
-- [ ] Validar um recorte público de vídeos sincronizados e sua calibração.
+- [x] Executar recortes públicos NVIDIA e WILDTRACK no importador e no painel, em oracle.
+- [ ] Recusar posições sem contato confiável com o chão: contraexemplo observado na NVIDIA.
+- [ ] Validar MTMMC após acesso autorizado aos arquivos.
 - [ ] Medir associação conservadora entre vistas, incluindo recusas e ambiguidades.
 - [ ] Medir custódia entre vistas com anotações próprias de posse.
 - [ ] Validar câmeras físicas e realizar demonstração controlada autorizada.
 
 O baseline real de percepção da #56 continua em aberto e é necessário para
 avaliar custódia. Concluir a interface não conclui essas validações.
+Resultados e limites dos recortes: [validação pública](PUBLIC_DATASET_VALIDATION.md).
 
 ## Ponto de partida verificado
 
@@ -181,10 +184,11 @@ localmente; não há garantia para todos os codecs ou desempenho em tempo real.
 Imagens são reduzidas a no máximo 1280×720 para a tela. Sem o arquivo de vídeo,
 o cache continua acessível e a imagem é declarada indisponível.
 
-Próxima validação de dados: um pequeno recorte público com vídeos sincronizados
-e calibração, preservando suas condições de acesso e rotulando a proveniência.
-Isso continua pendente. Não há benchmark de qualidade de detecção, associação
-ou custódia multicâmera nesta interface.
+Recortes públicos NVIDIA e WILDTRACK já foram importados e reproduzidos, com
+anotações em modo oracle. A projeção da base da bbox mostrou um contraexemplo
+com pés ocluídos; não há aprovação geral de precisão geométrica. MTMMC ainda
+depende de acesso autorizado. Não há benchmark de qualidade de detecção,
+associação ou custódia multicâmera nesta interface.
 
 ### 3. Associação entre vistas, medida separadamente
 
