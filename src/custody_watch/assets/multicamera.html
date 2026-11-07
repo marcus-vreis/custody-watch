@@ -8,6 +8,8 @@
   <script src="/assets/replay_link.js" defer></script>
   <script src="/assets/map_positions.js" defer></script>
   <script src="/assets/camera_inspector.js" defer></script>
+  <script src="/assets/contact_review.js" defer></script>
+  <script src="/assets/contact_review_ui.js" defer></script>
   <script src="/assets/multicamera.js" defer></script>
 </head>
 <body>
@@ -49,6 +51,12 @@
         <label class="speed-label" for="speed">Velocidade <select id="speed"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label></div>
         <span class="time-extent" id="extent"></span></div>
     </section>
+    <section class="panel contact-export-bar" aria-label="Rascunho de evidências">
+      <div><strong id="contact-count">0 anotações guardadas nesta página</strong>
+        <p>Rascunho temporário. Exporte antes de recarregar ou fechar a página.</p></div>
+      <button id="contact-export" class="secondary" type="button" disabled>Exportar evidências</button>
+      <p id="contact-global-message" role="status"></p>
+    </section>
     <dialog id="inspector" aria-labelledby="inspection-title">
       <div class="inspection-heading"><div><h2 id="inspection-title">Inspeção de câmera</h2><p id="inspection-origin"></p></div>
         <button id="inspection-close" class="secondary" type="button">Fechar inspeção</button></div>
@@ -59,8 +67,36 @@
         <button id="inspection-in" class="secondary" type="button" aria-label="Ampliar zoom">+</button>
         <button id="inspection-fit" class="secondary" type="button">Ajustar à largura</button>
         <span id="inspection-resolution"></span></div>
-      <div id="inspection-viewport" class="inspection-viewport" tabindex="0" aria-label="Imagem ampliada; use as barras ou as setas para rolar">
-        <p id="inspection-loading" role="status">Carregando quadro…</p><div id="inspection-image"></div></div>
+      <div class="inspection-review-layout">
+        <div id="inspection-viewport" class="inspection-viewport" tabindex="0" aria-label="Imagem ampliada; use as barras ou as setas para rolar">
+          <p id="inspection-loading" role="status">Carregando quadro…</p><div id="inspection-image"></div></div>
+        <section id="contact-panel" class="contact-panel" aria-label="Evidência de contato">
+          <h3>Evidência de contato</h3>
+          <p class="contact-note">Anotar não libera posição ou associação. A projeção da bbox permanece diagnóstica.</p>
+          <form id="contact-form">
+            <fieldset id="contact-fields" disabled>
+              <label for="contact-id">ID do quadro exibido</label><select id="contact-id"><option value="">Escolha um ID deste quadro</option></select>
+              <p id="contact-details" class="contact-details"></p>
+              <label for="contact-status">Contato com o chão</label>
+              <select id="contact-status"><option value="unknown">Desconhecido</option><option value="observed">Observado</option><option value="occluded">Ocluído</option></select>
+              <div class="contact-coordinates"><label for="contact-x">Coordenada X <input id="contact-x" type="number" min="0" step="any" inputmode="decimal"></label>
+                <label for="contact-y">Coordenada Y <input id="contact-y" type="number" min="0" step="any" inputmode="decimal"></label></div>
+              <p id="contact-domain" class="contact-note"></p>
+              <label for="contact-provenance">Origem da anotação</label>
+              <select id="contact-provenance"><option value="">Escolha a origem</option><option value="model_prediction">Estimativa sem revisão humana</option><option value="human_review">Revisão pessoal</option></select>
+              <label id="contact-human-label" class="contact-confirm" hidden><input id="contact-human" type="checkbox"> Confirmo que revisei pessoalmente esta observação</label>
+              <label for="contact-method">Método utilizado</label><textarea id="contact-method" rows="2" maxlength="1000" placeholder="Como esta observação foi avaliada?"></textarea>
+              <div class="contact-actions"><button id="contact-save" class="primary" type="submit">Guardar anotação</button>
+                <button id="contact-remove" class="secondary" type="button" disabled>Remover anotação</button></div>
+            </fieldset>
+          </form>
+          <p id="contact-message" class="contact-feedback" role="status"></p>
+          <details class="contact-binding"><summary>Vínculo do quadro</summary><p id="contact-binding"></p></details>
+          <button id="contact-export-modal" class="secondary" type="button" disabled>Exportar rascunho</button>
+          <details class="contact-preview"><summary>Prévia do arquivo JSON</summary><pre id="contact-export-preview"></pre></details>
+          <p class="contact-note">Até 1000 anotações por página. Fechar a inspeção descarta alterações não guardadas; o rascunho guardado permanece.</p>
+        </section>
+      </div>
       <p class="map-note">Resolução do arquivo local, com caixas e IDs anotados. Zoom digital não recupera detalhes ausentes; esquema sintético não é vídeo.</p>
     </dialog>
     <footer>Laboratório de observações · associação entre câmeras e transferência de custódia ainda não implementadas.</footer>

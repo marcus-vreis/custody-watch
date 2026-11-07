@@ -75,6 +75,33 @@ Origem e método são escolhas explícitas, sem herdar `ground_truth` do cache.
 `human_review` requer declaração de revisão pessoal; isso é uma declaração do
 operador, não autenticação de autoria ou certificação automática de confiança.
 
+### Anotar no painel
+
+1. Abra **Ampliar** na câmera e escolha um **ID do quadro exibido**. O replay
+   pausa e a imagem permanece congelada durante a revisão.
+2. Selecione **Observado**, **Ocluído** ou **Desconhecido**. Para observado,
+   clique no contato na imagem ou preencha X e Y nos pixels originais indicados.
+   A caixa e o marcador acompanham o zoom; ocluído/desconhecido exportam ponto nulo.
+3. Escolha a origem, descreva o método e use **Guardar anotação**. Revisão
+   pessoal exige confirmação explícita. A interface não promove estimativas
+   automaticamente nem transforma a anotação em posição aceita.
+4. Use **Exportar rascunho** no inspetor ou **Exportar evidências** no painel.
+   Confira o download no navegador. A **Prévia do arquivo JSON** também permite
+   consultar/copiar o conteúdo. O arquivo segue o contrato v1 acima.
+
+O rascunho vive apenas na memória da página: sobrevive ao fechamento do inspetor
+e às mudanças de câmera/tempo, mas é perdido ao recarregar ou fechar a página.
+Alterações ainda não guardadas são descartadas ao trocar de ID ou fechar o
+inspetor. Remover uma anotação é uma ação explícita e não modifica arquivos
+já exportados. Exportar conserva o rascunho e não escreve no servidor;
+o navegador controla o destino do download. Não há importação pelo painel.
+
+A anotação exige vídeo com imagem decodificada e vínculos válidos; um esquema
+sintético em SVG permite inspeção, mas não define pixels físicos da câmera.
+IDs de outros quadros não são oferecidos como presentes na imagem congelada.
+Falha no carregamento desabilita a anotação. A projeção exibida é a da bbox,
+diagnóstica; não representa avaliação do contato contra um gabarito.
+
 ## Executar a avaliação offline
 
 ```powershell

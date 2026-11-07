@@ -43,6 +43,9 @@ def test_pagina_usa_assets_locais_e_nao_codigo_inline(replay_server):
     assert "/assets/replay_link.js" in text
     assert "/assets/map_positions.js" in text
     assert "/assets/camera_inspector.js" in text
+    assert "/assets/contact_review.js" in text
+    assert "/assets/contact_review_ui.js" in text
+    assert 'id="contact-fields" disabled' in text
     assert '<dialog id="inspector" aria-labelledby="inspection-title">' in text
     assert '<input id="diagnostics" type="checkbox">' in text
     with _get(replay_server, "/assets/multicamera.js") as response:
@@ -57,6 +60,10 @@ def test_pagina_usa_assets_locais_e_nao_codigo_inline(replay_server):
     with _get(replay_server, "/assets/camera_inspector.js") as response:
         assert "javascript" in response.headers["Content-Type"]
         assert b"inspectionTarget" in response.read()
+    for asset in ("contact_review.js", "contact_review_ui.js"):
+        with _get(replay_server, "/assets/" + asset) as response:
+            assert "javascript" in response.headers["Content-Type"]
+            assert response.read()
 
 
 def test_config_e_estado_tem_relogio_compartilhado(replay_server):
@@ -157,3 +164,12 @@ def test_imagem_de_outro_registro_ou_sequencia_nao_herda_metadados(replay_server
         _get(replay_server, url)
 
     assert caught.value.code == 400
+
+
+def test_revisao_nao_introduz_endpoint_de_escrita_no_servidor(replay_server):
+    request = urllib.request.Request(
+        replay_server + "/api/contacts", data=b'{"path":"arquivo.json"}', method="POST"
+    )
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=5)
+    assert caught.value.code == 501

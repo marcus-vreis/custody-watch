@@ -7,6 +7,7 @@
   const seconds = value => `${Number(value).toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2})} s`;
   let config, state, selected = null, cursor = 0, generation = 0, controller, timer;
   let inspectionScale = 1, inspectionGeneration = 0, inspectionReturnId;
+  let contactReviewer;
   const make = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -161,6 +162,7 @@
     $("inspection-zoom").textContent = `${Math.round(inspectionScale * 100)}%`;
     $("inspection-out").disabled = inspectionScale <= 1;
     $("inspection-in").disabled = inspectionScale >= 4;
+    contactReviewer?.zoom();
   }
   function openInspection(camera, snapshot, returnId) {
     const target = inspectionTarget(camera, snapshot);
@@ -186,12 +188,15 @@
       if (!dialog.open || ticket !== inspectionGeneration) return;
       image.hidden = false; $("inspection-loading").hidden = true;
       $("inspection-resolution").textContent = target.kind === "schematic" ? "Esquema sintético vetorial · sem vídeo" : `${image.naturalWidth} × ${image.naturalHeight} px · arquivo local`;
+      contactReviewer.ready(image.naturalWidth, image.naturalHeight);
     };
     image.onerror = () => {
       if (!dialog.open || ticket !== inspectionGeneration) return;
       $("inspection-loading").textContent = "Imagem indisponível. Feche e tente novamente; o quadro não foi substituído.";
+      contactReviewer.unavailable();
     };
     $("inspection-image").replaceChildren(image);
+    contactReviewer.open(config, camera, snapshot, image);
     inspectionScale = 1; zoomInspection(0);
     $("inspection-viewport").scrollTop = 0; $("inspection-viewport").scrollLeft = 0;
     dialog.showModal();
@@ -232,6 +237,7 @@
       const response = await fetch("/api/config");
       if (!response.ok) throw new Error("Configuração indisponível");
       config = await response.json();
+      contactReviewer = new ContactReviewUI(config.registry_sha256);
       $("site").textContent = `${config.site_id} · Referenciais locais, sem identidade global`;
       for (const floor of config.floors) { const option = make("option", floor.floor_id); option.value = floor.floor_id; $("floor").append(option); }
       const target = replayTarget(window.location.search, config);
@@ -249,6 +255,7 @@
       $("inspection-close").addEventListener("click", () => $("inspector").close());
       $("inspector").addEventListener("close", () => {
         ++inspectionGeneration;
+        contactReviewer.close();
         $("inspection-image").replaceChildren();
         document.getElementById(inspectionReturnId)?.focus();
       });
