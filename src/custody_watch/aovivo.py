@@ -28,6 +28,7 @@ import numpy as np
 from .calibration import uniform_scale_warning
 from .orchestrator import LiveSession
 from .painel import Painel, desenha, estado
+from .source_health import SourceHealth
 from .tracking import TrackedDetection
 from .types import PERSON_CLASS
 from .video import (
@@ -59,6 +60,8 @@ def processa(
     painel: Painel,
     parar: threading.Event | None = None,
     escala_uniforme: bool = False,
+    source_health: SourceHealth | None = None,
+    capture_time: Callable[[float], float] | None = None,
 ) -> None:
     """Detecta, alimenta a sessão e publica no painel, quadro a quadro.
 
@@ -69,22 +72,50 @@ def processa(
     alturas: list[float] = []
     avisos: list[str] = []
 
-    for t, imagem in quadros:
-        if parar is not None and parar.is_set():
-            return
+    if source_health is not None and source_health.kind == "live" and capture_time is None:
+        raise ValueError("fonte live exige capture_time do leitor de câmera")
+    completed = False
+    try:
+        for t, imagem in quadros:
+            if parar is not None and parar.is_set():
+                return
+            received_at = None
+            if source_health is not None:
+                received_at = (
+                    capture_time(t) if capture_time is not None else source_health.received(t)
+                )
+            tracked = detecta(imagem)
+            sessao.feed(t, tracked)
 
-        tracked = detecta(imagem)
-        sessao.feed(t, tracked)
+            if escala_uniforme and len(alturas) < AMOSTRA_MAX_ESCALA:
+                alturas.extend(d.bbox[3] - d.bbox[1] for d in tracked if d.cls == PERSON_CLASS)
+                if (
+                    len(alturas) >= AMOSTRA_MIN_ESCALA
+                    and sessao.frames % VERIFICA_ESCALA_A_CADA == 0
+                ):
+                    aviso = uniform_scale_warning(alturas)
+                    avisos = [aviso] if aviso else []
 
-        if escala_uniforme and len(alturas) < AMOSTRA_MAX_ESCALA:
-            alturas.extend(d.bbox[3] - d.bbox[1] for d in tracked if d.cls == PERSON_CLASS)
-            if len(alturas) >= AMOSTRA_MIN_ESCALA and sessao.frames % VERIFICA_ESCALA_A_CADA == 0:
-                aviso = uniform_scale_warning(alturas)
-                avisos = [aviso] if aviso else []
-
-        atual = estado(sessao)
-        atual["avisos"] = list(avisos)
-        painel.atualiza(desenha(imagem, tracked, sessao), atual)
+            atual = estado(sessao)
+            atual["avisos"] = list(avisos)
+            painel.atualiza(desenha(imagem, tracked, sessao), atual)
+            if source_health is not None:
+                source_health.processed(t, received_at=received_at)
+        completed = True
+    except KeyboardInterrupt:
+        if source_health is not None:
+            source_health.finish("stopped", "user_stop")
+        raise
+    except Exception:
+        if source_health is not None:
+            source_health.finish("interrupted", "processing_exception")
+        raise
+    finally:
+        if source_health is not None:
+            if parar is not None and parar.is_set():
+                source_health.finish("stopped", "user_stop")
+            elif completed and source_health.kind == "file":
+                source_health.finish("completed", "end_of_file")
 
 
 def quadros_de_arquivo(caminho: Path | str, passo: int = 1) -> Iterator[tuple[float, np.ndarray]]:
@@ -114,10 +145,13 @@ class CameraAoVivo:
         captura: Any,
         relogio: Callable[[], float] = time.monotonic,
         parar: threading.Event | None = None,
+        source_health: SourceHealth | None = None,
     ) -> None:
         self._captura = captura
         self._relogio = relogio
         self._parar = parar if parar is not None else threading.Event()
+        self._source_health = source_health
+        self._origin: float | None = None
         self._cond = threading.Condition()
         self._ultimo: tuple[int, float, np.ndarray] | None = None
         self._acabou = False
@@ -128,26 +162,49 @@ class CameraAoVivo:
         câmera."""
 
     def _le(self) -> None:
-        t0: float | None = None
         indice = 0
+        reason = "read_failed"
         try:
             while not self._parar.is_set():
                 ok, imagem = self._captura.read()
                 if not ok:
                     return
                 agora = self._relogio()
-                if t0 is None:
-                    t0 = agora
+                if self._origin is None:
+                    self._origin = agora
+                t = agora - self._origin
+                if self._source_health is not None:
+                    self._source_health.received(t, received_at=agora)
                 with self._cond:
-                    self._ultimo = (indice, agora - t0, imagem)
+                    self._ultimo = (indice, t, imagem)
                     self._cond.notify_all()
                 indice += 1
+        except Exception:
+            # Não publicar str(erro): backends podem incluir uma URL com senha.
+            reason = "capture_exception"
         finally:
-            self._captura.release()
-            with self._cond:
-                self._acabou = True
-                self._cond.notify_all()
-            self.encerrada.set()
+            if self._source_health is not None:
+                self._source_health.finish(
+                    "stopped" if self._parar.is_set() else "interrupted",
+                    "user_stop" if self._parar.is_set() else reason,
+                )
+            try:
+                self._captura.release()
+            except Exception:
+                if self._source_health is not None and not self._parar.is_set():
+                    self._source_health.finish("interrupted", "capture_exception")
+            finally:
+                with self._cond:
+                    self._acabou = True
+                    self._cond.notify_all()
+                self.encerrada.set()
+
+    def received_at(self, media_t: float) -> float:
+        """O t da câmera é monotônico desde a primeira captura, sem mapa crescente."""
+        with self._cond:
+            if self._origin is None:
+                raise ValueError("nenhum quadro capturado")
+            return self._origin + media_t
 
     def __iter__(self) -> Iterator[tuple[float, np.ndarray]]:
         threading.Thread(target=self._le, daemon=True, name="camera").start()
@@ -163,7 +220,11 @@ class CameraAoVivo:
             with self._cond:
                 while not pronto():
                     self._cond.wait(self.ESPERA_S)
-                if self._parar.is_set() or not novo():
+                if self._parar.is_set():
+                    if self._source_health is not None:
+                        self._source_health.finish("stopped", "user_stop")
+                    return
+                if not novo():
                     return
                 indice, t, imagem = self._ultimo
 

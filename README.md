@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 501 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 526 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -74,6 +74,23 @@ uv run python scripts/serve.py rtsp://camera/stream --calibration ground.json
 ```
 
 and open `http://localhost:8765`. A file is processed without loss, on its own clock — `--passo N` skips frames without shrinking time. A camera (index or URL) always hands over the newest frame, timed by the wall clock: processing every frame of a camera faster than the detector would drift further behind for the whole shift. It listens on this machine only. Listening beyond it with `--host` is refused without `--cert` and `--key`: plain HTTP on a network is the camera open to anyone on the same segment, and a warning in the terminal protects no one. On the gate clip, CPU only, `--passo 2` runs at about real time and the thief is the only N3, ranked first, and reaches the screen while the clip is still playing — not after it ends.
+
+The screen separates **server connected** from **receiving images**. Its source
+banner distinguishes initialization, fresh reception, no recent frames,
+interrupted capture, completed file and requested shutdown. The last image
+remains visible with an explicit historical marker after interruption or file
+completion. HTTP still answering does not make an old image live.
+
+`--source-timeout` sets the positive, finite number of seconds without a local
+capture before the source is marked stale (default 5 s, an operational setting,
+not a universal camera requirement). Source age is recomputed on each state
+request, including while a capture read is blocked. A camera receiving new,
+visually identical frames stays healthy. The screen also shows the age of the
+capture used for the displayed image, so fresh reception cannot hide slow
+processing. These are local monotonic measurements; they do not measure delay
+upstream of the capture backend. Source health never creates custody flags.
+Application URL source labels omit credentials, the URL path and query strings.
+Reconnection is not implemented by this health indication.
 
 **The operator can point at what the detector cannot see.** On the live screen, *Apontar bagagem* turns a click into an anchor at that spot, and *Apontar dono* attaches an owner to it; both are recorded in the event log as `origem: operador`, so a human assertion is never confused with a detection. This exists because of a measurement, not a hunch: across the four MEVA thefts, in the 90 s each bag sits still before it is taken, the detector produces **zero** bag boxes over it — and neither a bigger model (`yolo26x`) nor a 4× zoomed crop changes that zero, even at a confidence of 0.05. A pointed anchor is watched by the same rules as any other: it goes unattended when its owner walks away, and a stranger who touches it is ranked. It buys nothing it cannot see, though — with no bag detections there is no removal to observe, so theft of an invisible bag stays out of reach.
 
@@ -228,6 +245,7 @@ not acquire those inputs or infer missing provenance.
 | `events.py` | Events as serialisable intervals, JSONL |
 | `orchestrator.py` | Wires it together; consumes frames, emits a queue — in batch or one frame at a time |
 | `aovivo.py` | The live loop: file on its own clock, camera always on its newest frame |
+| `source_health.py` | Bounded source health, local capture age and displayed-image age, independent of custody |
 | `painel.py` | What the live screen shows: queue, custody events, annotated frame, pointed anchors |
 | `servidor.py` | Standard-library HTTP: the page, MJPEG video, state as JSON |
 | `clips.py` | Annotated GIF cut around the gravest signal |
