@@ -65,3 +65,47 @@ uma alteração de arquivo não é rebaixada silenciosamente a vídeo offline.
 Dimensões conferidas não comprovam visibilidade, precisão da calibração ou
 correção da declaração. Erro de validação/projeção ocorre antes de publicar o
 diretório; falhas posteriores de escrita podem deixar saída parcial e são erro.
+
+## Ensaio exploratório de 2026-11-07
+
+Arquivos de declarações: `validation/ground-contacts-nvidia-2026-11-07.json`
+e `validation/ground-contacts-wildtrack-2026-11-07.json`. São estimativas visuais
+com `model_prediction`, sem revisão humana, fixadas antes de comparar com a
+posição anotada. Não são exemplos de `human_review` nem treinamento validado.
+
+Resultado: [`validation/contact-evidence-2026-11-07.json`](validation/contact-evidence-2026-11-07.json).
+Um run por recorte oracle existente, sem seed aleatória; um contato comparável
+por base. IDs são os do gabarito já presente nos caches, não associação calculada.
+
+| Recorte | Observações | Declarações | Contatos comparados | Erro do contato estimado contra posição anotada |
+| --- | ---: | ---: | ---: | ---: |
+| NVIDIA | 132 | 2 | 1 | 0,019997079389693445 m |
+| WILDTRACK | 422 | 2 | 1 | 0,4411485669091993 m |
+
+Fonte de todas as contagens/erros: JSON acima, que também registra hashes de
+cadastro, sequência, evidência, código e referência original. NVIDIA #6 conserva
+contato ocluído/nulo; WILDTRACK #41 conserva contato desconhecido/nulo pela borda
+inferior. As 554 observações permanecem sem posição aceita ou associação.
+
+Esses dois pontos não estimam confiabilidade nem comparam bases/métodos.
+A referência de posição do pedestre pode representar outro alvo físico que
+o ponto entre apoios dos pés. A calibração fornecida não é validação física
+independente. O arquivo fixa estimativas para reproduzir o cálculo, mas não
+oferece um gerador de estimativas visuais reproduzível ou sua confirmação humana.
+Nenhum ponto foi ajustado depois de consultar seu erro contra o gabarito.
+
+Reprodução com os recortes e originais locais já obtidos; `--output` exige
+arquivo novo. `<...>` indica caminhos a substituir, não download automático:
+
+```powershell
+.venv\Scripts\python.exe validation/measure_contact_cases.py `
+  --nvidia-registry <recorte-nvidia/registry.json> `
+  --wildtrack-registry <recorte-wildtrack/registry.json> `
+  --nvidia-source <originais-nvidia> `
+  --wildtrack-source <Wildtrack_dataset> --output <novo-resultado.json>
+```
+
+Os arquivos originais continuam fora do Git. Não houve inferência de detector,
+novo peso, download ou GPU neste ensaio. Para liberar posições ainda falta
+definir o alvo físico, revisar contatos e medir erro/cobertura/abstenções em
+amostra adequada, com política explícita de incerteza espacial e temporal.

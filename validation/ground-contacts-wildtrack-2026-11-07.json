@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "registry_sha256": "d9e2600fbe42d37264dcc5b3478b79d52efadab05ff5fafa91dc83ed68e9309e",
+  "cameras": [
+    {
+      "camera_id": "C1",
+      "segment_id": "sample-1",
+      "sequence_sha256": "81080fb9b92c7156c5b82d0d93584288f3314f0bf3f8069712e1fbffc1d8ae6f",
+      "image_size_px": [
+        1920,
+        1080
+      ],
+      "observations": [
+        {
+          "frame_index": 5,
+          "local_track_id": 4,
+          "status": "observed",
+          "point_px": [
+            850,
+            451
+          ],
+          "provenance": "model_prediction",
+          "method": "Estimativa visual exploratória entre os apoios dos pés no pavimento; sem revisão humana e sem consultar positionID."
+        },
+        {
+          "frame_index": 5,
+          "local_track_id": 41,
+          "status": "unknown",
+          "point_px": null,
+          "provenance": "model_prediction",
+          "method": "Pés fora do campo visível pela borda inferior; contato não verificável nesta imagem."
+        }
+      ]
+    }
+  ]
+}

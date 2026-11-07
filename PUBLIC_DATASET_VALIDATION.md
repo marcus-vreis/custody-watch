@@ -132,9 +132,19 @@ Para WILDTRACK, espera a estrutura publicada com `Image_subsets/`,
 Use diretórios novos. Uma falha de leitura/escrita pode deixar um recorte parcial;
 a ausência de `validation.json` com sucesso impede tratá-lo como execução válida.
 
+## Declarações de contato — atualização de 2026-11-07
+
+O gate conservador da #75 já mantém posições aceitas nulas. A #78 acrescenta
+evidência separada por observação e avaliador offline, sem modificar este
+resultado histórico ou liberar associação. Um novo ensaio exploratório usa um
+contato estimado por base, com proveniência de modelo e sem revisão humana.
+Contrato, números, reprodução e limites estão em [GROUND_CONTACTS.md](GROUND_CONTACTS.md)
+e [validation/contact-evidence-2026-11-07.json](validation/contact-evidence-2026-11-07.json).
+Essa pequena checagem do cálculo não estima confiabilidade de produção.
+
 ## Pendências
 
-1. Recusar ou qualificar projeções sem contato confiável com o chão.
+1. Validar evidências de contato e política de incerteza antes de qualificar posições.
 2. Melhorar legibilidade dos rótulos da planta em cenas densas; há sobreposição.
 3. Ampliar os recortes disponíveis, respeitando as condições de uso; MTMMC fica
    fora do plano ativo deste projeto pessoal.

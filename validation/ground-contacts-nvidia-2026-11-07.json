@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "registry_sha256": "97d206421b3f796fef74229eb4f0f10d069b7aa45937335ca70d43144018892b",
+  "cameras": [
+    {
+      "camera_id": "Camera_0019",
+      "segment_id": "sample-1",
+      "sequence_sha256": "0e62970290626023b5479777429a9d5ffe03ad75499b381a0793f1372f03601a",
+      "image_size_px": [
+        1920,
+        1080
+      ],
+      "observations": [
+        {
+          "frame_index": 5,
+          "local_track_id": 24,
+          "status": "observed",
+          "point_px": [
+            1644,
+            820
+          ],
+          "provenance": "model_prediction",
+          "method": "Estimativa visual exploratória do contato entre os pés e o piso; sem revisão humana e sem consultar a posição 3D."
+        },
+        {
+          "frame_index": 5,
+          "local_track_id": 6,
+          "status": "occluded",
+          "point_px": null,
+          "provenance": "model_prediction",
+          "method": "A caixa visível termina na cabeça atrás do corpo da anotação 24; não há contato no chão visível."
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,8 @@ continuam planejadas. O roadmap separa implementações de validações ainda pe
 - [x] Mosaico, planta e navegação sincronizada com fixtures e vídeo local gerado.
 - [x] Executar recortes públicos NVIDIA e WILDTRACK no importador e no painel, em oracle.
 - [x] Recusar posições sem contato comprovado com o chão; projeção diagnóstica separada (#75).
-- [ ] Definir evidência de contato por observação e medir sua confiabilidade antes de liberar posições.
+- [x] Definir evidência de contato por observação e avaliar casos exploratórios (#78).
+- [ ] Validar confiabilidade e política de incerteza antes de liberar posições.
 - [ ] Medir associação conservadora entre vistas, incluindo recusas e ambiguidades.
 - [ ] Medir custódia entre vistas com anotações próprias de posse.
 - [ ] Validar câmeras físicas e realizar demonstração controlada autorizada.
@@ -16,6 +17,7 @@ continuam planejadas. O roadmap separa implementações de validações ainda pe
 O baseline real de percepção da #56 continua em aberto e é necessário para
 avaliar custódia. Concluir a interface não conclui essas validações.
 Resultados e limites dos recortes: [validação pública](PUBLIC_DATASET_VALIDATION.md).
+Contrato, avaliador e limites dos contatos: [GROUND_CONTACTS.md](GROUND_CONTACTS.md).
 
 MTMMC foi retirada do plano ativo por decisão do mantenedor: o projeto é pessoal
 e as exigências de vínculo acadêmico do processo de acesso não correspondem ao
