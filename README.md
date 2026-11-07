@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 791 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 824 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -57,8 +57,19 @@ multi-camera lab, without weights, video downloads or a GPU:
 
 Use a new output directory. The example exports `summary.json` and
 `frames.jsonl` from synthetic observations, with camera/segment-qualified IDs
-and explicit timing uncertainty. It does not play videos or associate people
-between cameras. A mosaic, floor-plan UI and cross-camera custody remain planned.
+and explicit timing uncertainty. Open the visual lab with:
+
+```powershell
+.venv\Scripts\python.exe scripts/serve_multicamera.py tests/fixtures/multicamera/two-cameras/registry.json
+```
+
+Browse to `http://127.0.0.1:8766` (or set `--port`). The local-only interface has
+a camera mosaic, a floor-plan view, camera selection, playback/pause, shared
+seeking and speed controls. Synthetic fixtures render schematic views, clearly
+labelled as having no video. Locally available video sources serve decoded JPEG
+frames; decoding was tested with generated MJPG footage, without a detector or
+GPU. Missing/stale/completed cameras retain explicitly historical images, with
+their own timestamps and ages. Cross-camera identity and custody remain planned.
 See the [multi-camera contract and roadmap](MULTICAMERA.md) for data sources,
 coordinate conventions and incremental acceptance criteria.
 

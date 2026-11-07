@@ -1,22 +1,33 @@
 # Plano para câmeras, mapa e acompanhamento multicâmera
 
-Estado em 2026-11-06: **cadastro e replay de predições implementados em CPU**;
-mosaico, reprodução de vídeo sincronizada, planta e associação entre câmeras
-ainda planejados. Os recortes abaixo não têm números de issues atribuídos no GitHub.
+Estado em 2026-11-06: **cadastro, relógio comum, mosaico e planta de replay
+implementados em CPU**. Associação entre câmeras e transferência de custódia
+continuam planejadas. Os recortes abaixo não têm números de issues atribuídos no GitHub.
+
+- [x] Cadastro de ambiente e relógio comum de replay.
+- [x] Mosaico, planta e navegação sincronizada com fixtures e vídeo local gerado.
+- [ ] Validar um recorte público de vídeos sincronizados e sua calibração.
+- [ ] Medir associação conservadora entre vistas, incluindo recusas e ambiguidades.
+- [ ] Medir custódia entre vistas com anotações próprias de posse.
+- [ ] Validar câmeras físicas e realizar demonstração controlada autorizada.
+
+O baseline real de percepção da #56 continua em aberto e é necessário para
+avaliar custódia. Concluir a interface não conclui essas validações.
 
 ## Ponto de partida verificado
 
 - `scripts/serve.py` recebe uma fonte: arquivo, índice de câmera ou URL. Já existe
   painel web com imagem, fila de revisão, estado da captura e apontamento manual.
-- `GroundPlane` projeta pixels no chão em metros. Falta um cadastro que coloque
-  todas as câmeras no mesmo referencial espacial e temporal.
+- `GroundPlane` projeta pixels no chão em metros. O cadastro multicâmera declara
+  a relação com o referencial do andar e o offset temporal de cada gravação.
 - Há replay de predições versionadas e testes sintéticos em CPU. O cadastro novo
   compõe manifests de sequência v1 sem modificá-los; mantém a distinção entre
   oracle, sintético e detector por câmera.
 - A recuperação de captura cria outro segmento e outra sessão. IDs, grupos e
   posse não atravessam essa lacuna automaticamente.
-- Não foram validados neste clone câmeras físicas, RTSP real, inferência em GPU,
-  mosaico, planta integrada ou associação de pessoas entre câmeras.
+- Mosaico e planta foram validados com observações sintéticas e decodificação
+  de vídeo local gerado para teste. Câmeras físicas, RTSP real, inferência em GPU
+  e associação de pessoas entre câmeras continuam sem validação neste clone.
 
 ## O que o produto deve mostrar
 
@@ -125,6 +136,11 @@ foi construída; não demonstra associação de identidade ou desempenho de dete
 
 ### 2. Mosaico e planta do laboratório virtual
 
+Implementado em `multicamera_view.py`, `multicamera_media.py`,
+`multicamera_server.py`, `assets/multicamera.*` e `scripts/serve_multicamera.py`.
+O servidor escuta exclusivamente `127.0.0.1`; `--port` escolhe a porta. Não
+substitui o painel operacional de uma câmera de `scripts/serve.py`.
+
 - Acrescentar reprodução sincronizada com pausa e busca conjunta; começar pelos
   dados sintéticos do contrato, depois adaptar um recorte público autorizado.
 - Mostrar estado e idade da imagem por câmera, instante do replay e cobertura
@@ -134,6 +150,41 @@ foi construída; não demonstra associação de identidade ou desempenho de dete
   lacuna, calibração ausente e IDs locais iguais em câmeras diferentes.
 - Identificar em tela se posições vêm de oracle, fixture ou detector. Uma
   demonstração com posições anotadas valida a interface, não a percepção.
+
+O relógio avança por `performance.now` durante a reprodução. A interface busca
+snapshots até quatro vezes por segundo, com cancelamento de buscas anteriores,
+e permite pausa, velocidade, retorno ao início e busca conjunta pelo teclado ou
+slider. Quadros e posições não são interpolados. O mapa usa coordenadas em
+metros; não exige um serviço de mapas externo nem uma imagem de planta.
+Cobertura e posições de câmeras desconhecidas continuam explícitas.
+
+Cada snapshot é calculado a partir do instante solicitado, sem carregar dados
+do futuro depois de buscar para trás. Um quadro observado vale até o próximo
+período nominal (`1/fps`); lacunas sem linha de cache tornam a câmera `stale`.
+Linhas `missing` indicam ausência explícita. Depois de `end_s + 1/fps`, a
+gravação está concluída. Não iniciada, ausente, sem observações e concluída não
+exibem tracks como observações atuais. As últimas observações são opcionais no
+mapa, tracejadas e com idade, sem afirmar onde a pessoa está agora.
+
+As imagens são qualificadas por câmera, segmento e índice. A interface mostra
+o tempo e a idade da imagem independentemente do cursor e acrescenta HISTÓRICO
+nas lacunas e ao fim. Fixtures numéricos geram SVGs esquemáticos rotulados;
+fontes `video` disponíveis localmente usam OpenCV para buscar o índice do quadro
+e servir JPEG. Cada leitura abre e libera o decoder, sem estado compartilhado
+entre requisições. Não são abertos streams RTSP por este laboratório.
+
+A integridade do vídeo é conferida ao criar o catálogo de imagens; mudanças
+posteriores de tamanho, mtime ou identidade do arquivo são recusadas. Não há
+re-hash completo a cada quadro. Busca por índice depende do backend de vídeo:
+um decoder que não confirme o índice é recusado. Foi testado MJPG gerado
+localmente; não há garantia para todos os codecs ou desempenho em tempo real.
+Imagens são reduzidas a no máximo 1280×720 para a tela. Sem o arquivo de vídeo,
+o cache continua acessível e a imagem é declarada indisponível.
+
+Próxima validação de dados: um pequeno recorte público com vídeos sincronizados
+e calibração, preservando suas condições de acesso e rotulando a proveniência.
+Isso continua pendente. Não há benchmark de qualidade de detecção, associação
+ou custódia multicâmera nesta interface.
 
 ### 3. Associação entre vistas, medida separadamente
 
