@@ -36,7 +36,9 @@ $env:PYTHONPATH = Join-Path (Get-Location).Path 'src'
   incerteza suprime alertas; flags descrevem relações, nunca atributos pessoais.
 - Preserve fontes, dados e resultados. Toda métrica cita o arquivo de resultado
   e informa modo, split, seed (ou ausência) e quantidade de runs; não invente números.
-  Oracle usa anotações e não mede detector, associação calculada ou custódia.
+  Nos recortes oracle atuais, IDs e caixas vêm do gabarito: não demonstram detector,
+  associação calculada ou custódia. Avaliar lógica em oracle exige protocolo,
+  algoritmo e anotações próprios; explicite o alcance.
 - Antes de merge autorizado, obtenha SHA completo com `git rev-parse <ref>`
   e compare com o head remoto; use esse SHA em `--match-head-commit`.
   Nunca complete hash curto manualmente. Não amplie autorizações da conversa.
