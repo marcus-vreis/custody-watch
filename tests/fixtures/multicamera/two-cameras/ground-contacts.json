@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "registry_sha256": "86a13b8b3a7e491e33d838990418d1b01c5be9ba8fbe119f06fd783730c68271",
+  "cameras": [
+    {
+      "camera_id": "cam-a",
+      "segment_id": "segment-1",
+      "sequence_sha256": "460cd832333aabc946079c175d246d0a7f8e19a44b2f30198ed9f8b404a93204",
+      "image_size_px": [
+        800,
+        600
+      ],
+      "observations": [
+        {
+          "frame_index": 0,
+          "local_track_id": 1,
+          "status": "observed",
+          "point_px": [
+            150,
+            200
+          ],
+          "provenance": "synthetic",
+          "method": "Contato definido pelo gerador da cena plana sintética."
+        },
+        {
+          "frame_index": 0,
+          "local_track_id": 9,
+          "status": "occluded",
+          "point_px": null,
+          "provenance": "synthetic",
+          "method": "Contato definido pelo gerador da cena plana sintética."
+        },
+        {
+          "frame_index": 1,
+          "local_track_id": 1,
+          "status": "unknown",
+          "point_px": null,
+          "provenance": "synthetic",
+          "method": "Contato definido pelo gerador da cena plana sintética."
+        }
+      ]
+    },
+    {
+      "camera_id": "cam-b",
+      "segment_id": "segment-1",
+      "sequence_sha256": "5ba45dc19c3a67ef8a57054f93b08d550084a48a3d24c48ad34d9cf22f1a0dfe",
+      "image_size_px": [
+        800,
+        600
+      ],
+      "observations": [
+        {
+          "frame_index": 0,
+          "local_track_id": 1,
+          "status": "observed",
+          "point_px": [
+            250,
+            200
+          ],
+          "provenance": "synthetic",
+          "method": "Contato definido pelo gerador da cena plana sintética."
+        }
+      ]
+    }
+  ]
+}
