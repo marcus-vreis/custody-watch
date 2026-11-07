@@ -42,8 +42,10 @@ def test_ids_iguais_preservam_namespace_e_proveniencia(tmp_path):
         "segment_id": "segment-1",
         "local_track_id": 1,
     }
-    assert a["tracks"][0]["position_m"] == pytest.approx([1.5, 2])
-    assert b["tracks"][0]["position_m"] == pytest.approx([1.5, 2])
+    assert a["tracks"][0]["projected_position_m"] == pytest.approx([1.5, 2])
+    assert b["tracks"][0]["projected_position_m"] == pytest.approx([1.5, 2])
+    assert a["tracks"][0]["position_m"] is None
+    assert b["tracks"][0]["position_m"] is None
     assert all(row["provenance"] == "synthetic" and row["mode"] == "predictions" for row in rows)
     assert all("global_track_id" not in track for row in rows for track in row["tracks"])
     assert all("events" not in row for row in rows)
@@ -196,6 +198,10 @@ def test_cli_grava_replay_e_contexto_sem_fabricar_metrica_de_tracking(tmp_path):
         for line in (output / "frames.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert summary["site_id"] == "synthetic-hall"
+    assert summary["schema_version"] == 2
+    assert all(row["schema_version"] == 2 for row in rows)
+    assert rows[0]["tracks"][0]["position_m"] is None
+    assert rows[0]["tracks"][0]["projected_position_m"] == pytest.approx([1.5, 2])
     assert summary["frames_written"] == 8
     assert summary["cameras"][0]["clock"]["offset_s"] == 0
     assert summary["cameras"][1]["clock"]["uncertainty_s"] == 0.05

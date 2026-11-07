@@ -49,14 +49,21 @@ def iter_synchronized(
 
 
 def frame_to_dict(item: SynchronizedFrame) -> dict:
-    """Serializa IDs locais qualificados e posição somente no referencial declarado."""
+    """Separa projeção diagnóstica de posição com contato no chão comprovado.
+
+    O cache v1 não declara visibilidade dos pés. Mesmo em oracle, uma bbox
+    visível pode terminar em uma oclusão. Nenhuma posição desses caches está
+    qualificada para associação entre vistas.
+    """
     camera, frame = item.camera, item.frame
     tracks = []
     for detection in frame.detections:
-        position = None
+        projection = None
+        status = "no_common_frame"
         if camera.projection_frame_id is not None:
             point = camera.recording.plane.foot_point(detection.bbox)
-            position = [finite_number(v, "position_m projetada") for v in (point.x, point.y)]
+            projection = [finite_number(v, "position_m projetada") for v in (point.x, point.y)]
+            status = "image_border" if detection.touches_bottom else "ground_contact_unknown"
         tracks.append(
             {
                 "track_key": {
@@ -66,13 +73,16 @@ def frame_to_dict(item: SynchronizedFrame) -> dict:
                 },
                 "cls": detection.cls,
                 "bbox": list(detection.bbox),
-                "position_m": position,
+                "position_m": None,
+                "projected_position_m": projection,
+                "position_status": status,
+                "association_eligible": False,
                 "touches_bottom": detection.touches_bottom,
             }
         )
     manifest = camera.recording.manifest
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "camera_id": camera.camera_id,
         "floor_id": camera.floor_id,
         "segment_id": camera.segment_id,

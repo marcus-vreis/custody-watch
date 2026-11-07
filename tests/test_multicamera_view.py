@@ -20,7 +20,7 @@ def test_config_descreve_cameras_planta_e_origem_sem_expor_caminhos(tmp_path):
     config = view.config()
 
     assert config["site_id"] == "synthetic-hall"
-    assert config["position_method"] == "bbox_bottom_on_ground_plane"
+    assert config["position_method"] == "unverified_bbox_bottom_projection"
     assert config["timeline"] == {"start_s": -1, "end_s": 4, "step_s": 0.05}
     assert config["floors"][0]["coordinate_frame"]["unit"] == "m"
     assert config["cameras"][0]["position_m"] == [-1, 0]
@@ -37,8 +37,10 @@ def test_snapshot_inicio_separa_ids_locais_sem_fusao(tmp_path):
 
     assert a["status"] == b["status"] == "observed"
     assert a["tracks"][0]["track_key"] != b["tracks"][0]["track_key"]
-    assert a["tracks"][0]["position_m"] == pytest.approx([1.5, 2])
-    assert b["tracks"][0]["position_m"] == pytest.approx([1.5, 2])
+    assert a["tracks"][0]["projected_position_m"] == pytest.approx([1.5, 2])
+    assert b["tracks"][0]["projected_position_m"] == pytest.approx([1.5, 2])
+    assert a["tracks"][0]["position_m"] is None
+    assert b["tracks"][0]["position_m"] is None
     assert b["image"]["media_t"] == 1
     assert b["image"]["t"] == 0
     assert b["time_interval_s"] == [-0.05, 0.05]

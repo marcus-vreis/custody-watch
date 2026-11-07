@@ -123,8 +123,9 @@ class ReplayView:
     def config(self) -> dict:
         registry = self.registry
         return {
+            "schema_version": 2,
             "site_id": registry.site_id,
-            "position_method": "bbox_bottom_on_ground_plane",
+            "position_method": "unverified_bbox_bottom_projection",
             "floors": [asdict(floor) for floor in registry.floors],
             "timeline": {
                 "start_s": finite_number(
@@ -153,4 +154,8 @@ class ReplayView:
 
     def snapshot(self, t: float) -> dict:
         t = finite_number(t, "tempo do replay")
-        return {"t": t, "cameras": [camera.snapshot(t) for camera in self._cameras]}
+        return {
+            "schema_version": 2,
+            "t": t,
+            "cameras": [camera.snapshot(t) for camera in self._cameras],
+        }

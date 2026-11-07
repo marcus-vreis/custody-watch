@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-07",
+  "scope": "Gate conservador, CPU, caches oracle existentes; sem inferência ou associação.",
+  "runs_per_dataset": 1,
+  "code_sha256": {
+    "src/custody_watch/multicamera_replay.py": "693d4ac352631e223a9c26ec4debd93399714bd7b15f350a357474d6a7544ff9"
+  },
+  "datasets": [
+    {
+      "dataset": "nvidia",
+      "mode": "oracle",
+      "registry_sha256": "97d206421b3f796fef74229eb4f0f10d069b7aa45937335ca70d43144018892b",
+      "recordings_sha256": {
+        "Camera_0008": "8264046cfac7d80e615206c9ee16a74daf8c7c40903d637cac5f5dce9df51a38",
+        "Camera_0019": "0e62970290626023b5479777429a9d5ffe03ad75499b381a0793f1372f03601a"
+      },
+      "frames": 14,
+      "observations": 132,
+      "qualified_positions": 0,
+      "diagnostic_projections": 132,
+      "association_eligible": 0,
+      "position_status_counts": {
+        "ground_contact_unknown": 121,
+        "image_border": 11
+      },
+      "counterexample": {
+        "camera_id": "Camera_0019",
+        "t": 2.5,
+        "frame_index": 5,
+        "track": {
+          "track_key": {
+            "camera_id": "Camera_0019",
+            "segment_id": "sample-1",
+            "local_track_id": 6
+          },
+          "cls": "person",
+          "bbox": [
+            1681.0,
+            262.0,
+            1698.0,
+            271.0
+          ],
+          "position_m": null,
+          "projected_position_m": [
+            -111.70814558723245,
+            -36.52949441475599
+          ],
+          "position_status": "ground_contact_unknown",
+          "association_eligible": false,
+          "touches_bottom": false
+        }
+      }
+    },
+    {
+      "dataset": "wildtrack",
+      "mode": "oracle",
+      "registry_sha256": "d9e2600fbe42d37264dcc5b3478b79d52efadab05ff5fafa91dc83ed68e9309e",
+      "recordings_sha256": {
+        "C1": "81080fb9b92c7156c5b82d0d93584288f3314f0bf3f8069712e1fbffc1d8ae6f",
+        "C2": "e6a1b9716d08cfc9ff5c328f03ca7d54c31ea28e1dffb738f289c42a062a8d3d"
+      },
+      "frames": 14,
+      "observations": 422,
+      "qualified_positions": 0,
+      "diagnostic_projections": 422,
+      "association_eligible": 0,
+      "position_status_counts": {
+        "ground_contact_unknown": 415,
+        "image_border": 7
+      }
+    }
+  ]
+}

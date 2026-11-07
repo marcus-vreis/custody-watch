@@ -26,9 +26,21 @@
     const cameras = config.cameras.filter(c => c.floor_id === floor.floor_id);
     const snapshots = state.cameras.filter(c => c.floor_id === floor.floor_id);
     const points = cameras.flatMap(c => [...(c.coverage_m || []), ...(c.position_m ? [c.position_m] : [])]);
-    for (const camera of snapshots) for (const track of [...camera.tracks, ...camera.last_tracks]) {
-      if (track.position_m) points.push(track.position_m);
+    const showDiagnostics = $("diagnostics").checked;
+    const displayed = snapshots.map(camera => {
+      const active = new Set(camera.tracks.map(keyOf));
+      const tracks = camera.tracks.map(track => ({track, old: false}));
+      if ($("history").checked) for (const track of camera.last_tracks) {
+        if (!active.has(keyOf(track))) tracks.push({track, old: true});
+      }
+      return tracks.map(item => ({...item, position: mapPosition(item.track, showDiagnostics)}));
+    });
+    for (const tracks of displayed) for (const item of tracks) {
+      if (item.position) points.push(item.position.point);
     }
+    const current = snapshots.flatMap(camera => camera.tracks);
+    const historical = displayed.flat().filter(item => item.old).length;
+    $("position-summary").textContent = `${current.length} observações atuais com posição não qualificada; ${historical} históricas selecionadas. ${showDiagnostics ? "DIAGNÓSTICO: projeções sem contato verificado com o chão." : "Projeções ocultas. Câmeras e cobertura permanecem visíveis."}`;
     const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
     const minX = Math.min(0, ...xs) - 1, maxX = Math.max(8, ...xs) + 1;
     const minY = Math.min(0, ...ys) - 1, maxY = Math.max(6, ...ys) + 1;
@@ -60,21 +72,18 @@
     }
     snapshots.forEach((camera, cameraIndex) => {
       const metadata = cameras.find(c => c.camera_id === camera.camera_id), color = colorFor(metadata);
-      const active = new Set(camera.tracks.map(keyOf));
-      const tracks = [...camera.tracks.map(track => ({track, old: false}))];
-      if ($("history").checked) for (const track of camera.last_tracks) if (!active.has(keyOf(track))) tracks.push({track, old: true});
-      for (const {track, old} of tracks) {
-        if (!track.position_m) continue;
-        const px = x(track.position_m[0]), py = y(track.position_m[1]);
+      for (const {track, old, position} of displayed[cameraIndex]) {
+        if (!position) continue;
+        const px = x(position.point[0]), py = y(position.point[1]);
         const group = svg("g", {opacity: selected && selected !== camera.camera_id ? .55 : 1});
-        const attrs = {fill: old ? "none" : color, stroke: color, "stroke-width": 1.8, "stroke-dasharray": old ? "3 2" : "none"};
+        const attrs = {fill: "none", stroke: color, "stroke-width": old ? 1 : 1.8, "stroke-dasharray": "3 2"};
         if (track.cls === "person") group.append(svg("circle", {...attrs, cx: px, cy: py, r: 6 + cameraIndex * 2}));
         else group.append(svg("polygon", {...attrs, points: `${px},${py-7} ${px+7},${py} ${px},${py+7} ${px-7},${py}`}));
-        const label = `${camera.camera_id} · #${track.track_key.local_track_id}${old ? ` · há ${seconds(track.age_s)}` : ""}`;
+        const label = `${camera.camera_id} · #${track.track_key.local_track_id} · ?${old ? ` · há ${seconds(track.age_s)}` : ""}`;
         const person = track.cls === "person";
         group.append(svg("text", {x: px + (person ? -14 : 14), y: py + (cameraIndex % 2 ? 22 : -13), "text-anchor": person ? "end" : "start", fill: color, "font-size": 10, "paint-order": "stroke", stroke: "#111a25", "stroke-width": 3}, label));
         const kind = {person: "Pessoa", suitcase: "Mala", backpack: "Mochila", handbag: "Bolsa"}[track.cls] || track.cls;
-        group.append(svg("title", {}, `${kind} · ${label} · segmento ${track.track_key.segment_id}`));
+        group.append(svg("title", {}, `${kind} · ${label} · segmento ${track.track_key.segment_id} · projeção diagnóstica; contato no chão não verificado · ${track.position_status}`));
         map.append(group);
       }
     });
@@ -187,6 +196,7 @@
       $("speed").addEventListener("change", () => { if (timer) { stop(); start(); } });
       $("floor").addEventListener("change", () => { selected = config.cameras.find(c => c.floor_id === $("floor").value)?.camera_id || null; render(); });
       $("history").addEventListener("change", renderMap);
+      $("diagnostics").addEventListener("change", renderMap);
       await seek(target.t);
     } catch (error) { $("error").textContent = "Não foi possível carregar o laboratório. Verifique o servidor local."; $("error").hidden = false; }
   }
