@@ -11,14 +11,14 @@ from tests.multicamera_fixture import make_registry
 from tests.recorded_fixture import reference, write_json
 
 
-def make_video_registry(root: Path):
+def make_video_registry(root: Path, size=(400, 240)):
     path = make_registry(root)
     video = root / "cam-a" / "scene.avi"
-    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"MJPG"), 1, (400, 240))
+    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"MJPG"), 1, size)
     assert writer.isOpened(), "o backend do teste precisa codificar MJPG local"
     try:
         for value in [30, 90, 150, 210]:
-            writer.write(np.full((240, 400, 3), value, dtype=np.uint8))
+            writer.write(np.full((size[1], size[0], 3), value, dtype=np.uint8))
     finally:
         writer.release()
     manifest_path = video.parent / "manifest.json"
@@ -99,3 +99,35 @@ def test_video_trocado_antes_de_criar_o_catalogo_nao_herda_verificacao(tmp_path)
 
     with pytest.raises(ValueError, match="integridade"):
         FrameImages(registry)
+
+
+def test_inspecao_preserva_resolucao_do_arquivo_e_quadro_solicitado(tmp_path):
+    path, video = make_video_registry(tmp_path, size=(1440, 900))
+    images = FrameImages(load_camera_registry(path))
+
+    preview = images.get("cam-a", "segment-1", 3)
+    detail = images.get("cam-a", "segment-1", 3, resolution="source")
+    small = cv2.imdecode(np.frombuffer(preview.data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    large = cv2.imdecode(np.frombuffer(detail.data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert small.shape == (720, 1152, 3)
+    assert large.shape == (900, 1440, 3)
+    assert large[890, 1430, 0] == pytest.approx(210, abs=5)
+    video.rename(video.with_name("released-detail.avi"))
+
+
+@pytest.mark.parametrize("resolution", [None, True, "original", "", "../../scene.avi"])
+def test_inspecao_recusa_resolucao_desconhecida(tmp_path, resolution):
+    images = FrameImages(load_camera_registry(make_registry(tmp_path)))
+
+    with pytest.raises(ValueError, match="resolution"):
+        images.get("cam-a", "segment-1", 0, resolution=resolution)
+
+
+def test_inspecao_nao_ignora_integridade_da_fonte(tmp_path):
+    path, video = make_video_registry(tmp_path)
+    images = FrameImages(load_camera_registry(path))
+    video.write_bytes(b"substituido")
+
+    with pytest.raises(ValueError, match="alterado"):
+        images.get("cam-a", "segment-1", 0, resolution="source")

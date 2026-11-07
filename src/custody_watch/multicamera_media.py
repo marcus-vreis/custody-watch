@@ -46,7 +46,11 @@ class FrameImages:
                     raise ValueError("integridade do vídeo diverge da gravação")
                 self._sources[camera.camera_id] = path, _signature(path)
 
-    def get(self, camera_id: str, segment_id: str, frame_index: int) -> FrameImage:
+    def get(
+        self, camera_id: str, segment_id: str, frame_index: int, *, resolution: str = "preview"
+    ) -> FrameImage:
+        if resolution not in ("preview", "source"):
+            raise ValueError("resolution: esperado preview ou source")
         camera = self._cameras.get(camera_id)
         if camera is None or camera.segment_id != segment_id:
             raise ValueError("câmera ou segmento desconhecido")
@@ -88,10 +92,11 @@ class FrameImages:
                     cv2.LINE_AA,
                 )
             height, width = image.shape[:2]
-            scale = min(1, 1280 / width, 720 / height)
+            scale = min(1, 1280 / width, 720 / height) if resolution == "preview" else 1
             if scale < 1:
                 image = cv2.resize(image, (max(1, int(width * scale)), max(1, int(height * scale))))
-            ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            quality = 80 if resolution == "preview" else 95
+            ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
             if not ok:
                 raise ValueError("falha na codificação JPEG")
             if _signature(path) != signature:

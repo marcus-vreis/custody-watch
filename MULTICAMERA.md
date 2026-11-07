@@ -56,7 +56,7 @@ consulta a banco de identidades. Reconhecimento facial continua fora de escopo.
 
 ### Ajustes da interface ainda em aberto
 
-- Ampliar câmera/zoom para inspecionar caixas pequenas do mosaico.
+- [x] Ampliar câmera/zoom para inspecionar caixas pequenas do mosaico (#79).
 - Inspecionar um ID com câmera, quadro original, tempo e coordenadas; apresentar
   comparação com gabarito apenas quando esse dado estiver disponível e rotulado.
 - Reduzir sobreposição e corte dos rótulos da planta em cenas densas.
@@ -66,6 +66,23 @@ O link por câmera/instante já permite abrir casos específicos para revisão.
 A política conservadora da #75 recusa todas as posições dos caches atuais para
 associação; a planta só mostra essas projeções mediante opção diagnóstica explícita.
 Os ajustes de inspeção e um contrato de evidência de contato continuam pendentes.
+
+O botão **Ampliar** pausa o replay e congela o quadro exibido, com câmera,
+segmento, índice, tempo da imagem/mídia e idade ao abrir. O modal identifica
+oracle/sintético/detector e imagem histórica; não lista tracks de outros quadros
+como se estivessem presentes nessa imagem. Zoom de 100% a 400% é relativo ao
+ajuste à largura, com rolagem; **Ajustar à largura** retorna ao início da imagem.
+Esc ou **Fechar inspeção** encerra e devolve foco ao botão da câmera. O replay
+permanece pausado. Sem imagem, o botão fica desabilitado; uma falha ao carregar
+é explícita e não substitui silenciosamente o quadro.
+
+A inspeção pede `/api/image` com `resolution=source`: conserva a resolução do
+arquivo local e codifica JPEG com qualidade 95; a prévia continua limitada a
+1280×720 e qualidade 80. O parâmetro opcional aceita apenas `preview` e `source`;
+ausência mantém a prévia. Parâmetros repetidos, vazios e desconhecidos são
+recusados. Ambas as variantes validam câmera/segmento/quadro e integridade da
+fonte antes/depois da decodificação, liberando o decoder. Esquemas sintéticos
+continuam SVGs rotulados. Nenhum zoom recupera detalhes ausentes da fonte.
 
 ## Laboratórios públicos encontrados
 

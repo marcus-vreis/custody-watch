@@ -42,6 +42,8 @@ def test_pagina_usa_assets_locais_e_nao_codigo_inline(replay_server):
     assert "/assets/multicamera.css" in text
     assert "/assets/replay_link.js" in text
     assert "/assets/map_positions.js" in text
+    assert "/assets/camera_inspector.js" in text
+    assert '<dialog id="inspector" aria-labelledby="inspection-title">' in text
     assert '<input id="diagnostics" type="checkbox">' in text
     with _get(replay_server, "/assets/multicamera.js") as response:
         assert "javascript" in response.headers["Content-Type"]
@@ -52,6 +54,9 @@ def test_pagina_usa_assets_locais_e_nao_codigo_inline(replay_server):
     with _get(replay_server, "/assets/map_positions.js") as response:
         assert "javascript" in response.headers["Content-Type"]
         assert b"mapPosition" in response.read()
+    with _get(replay_server, "/assets/camera_inspector.js") as response:
+        assert "javascript" in response.headers["Content-Type"]
+        assert b"inspectionTarget" in response.read()
 
 
 def test_config_e_estado_tem_relogio_compartilhado(replay_server):
@@ -102,3 +107,25 @@ def test_nao_serve_arquivos_do_workspace(replay_server):
     with pytest.raises(urllib.error.HTTPError) as caught:
         _get(replay_server, "/assets/../camera_registry.py")
     assert caught.value.code == 404
+
+
+def test_inspecao_aceita_resolucao_da_fonte_sem_mudar_namespace(replay_server):
+    with _get(
+        replay_server,
+        "/api/image?camera_id=cam-a&segment_id=segment-1&frame_index=0&resolution=source",
+    ) as response:
+        assert response.headers["Content-Type"].startswith("image/svg+xml")
+        assert "cam-a" in response.read().decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    ["&resolution=", "&resolution=source&resolution=preview", "&resolution=original", "&path=x"],
+)
+def test_inspecao_recusa_parametros_invalidos(replay_server, suffix):
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        _get(
+            replay_server,
+            "/api/image?camera_id=cam-a&segment_id=segment-1&frame_index=0" + suffix,
+        )
+    assert caught.value.code == 400
