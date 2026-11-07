@@ -96,8 +96,9 @@ def test_dimensoes_declaradas_sao_conferidas_contra_video_local(tmp_path):
     data["cameras"][0]["image_size_px"] = [401, 240]
     write_json(evidence_path, data)
 
+    evidence = load_ground_contacts(evidence_path, registry)
     with pytest.raises(ValueError, match="image_size_px"):
-        evaluate_ground_contacts(registry, load_ground_contacts(evidence_path, registry))
+        evaluate_ground_contacts(registry, evidence)
 
 
 def _run_cli(registry, contacts, output):
@@ -185,8 +186,9 @@ def test_projecao_de_contato_nao_finita_e_recusada_sem_fallback_para_bbox(tmp_pa
         plane, "project", lambda x, y: Point(float("nan"), 0) if x == 160 else project(x, y)
     )
 
+    evidence = load_ground_contacts(path, registry)
     with pytest.raises(ValueError, match="contact_projection_m"):
-        evaluate_ground_contacts(registry, load_ground_contacts(path, registry))
+        evaluate_ground_contacts(registry, evidence)
 
 
 def test_video_offline_preserva_qualificador_de_dimensoes_nao_verificadas(tmp_path):
