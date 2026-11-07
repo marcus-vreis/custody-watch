@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 526 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-04): 612 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -243,6 +243,8 @@ not acquire those inputs or infer missing provenance.
 | `flags.py` | Relational flags, exponential decay |
 | `alerts.py` | Ranked queue, clip window, explanation |
 | `events.py` | Events as serialisable intervals, JSONL |
+| `event_journal.py` | Incremental journal, exclusive rotation, segment lifecycle and write acknowledgements |
+| `journal_reader.py` | Streaming validation and explicit recovery of an interrupted journal tail |
 | `orchestrator.py` | Wires it together; consumes frames, emits a queue — in batch or one frame at a time |
 | `aovivo.py` | The live loop: file on its own clock, camera always on its newest frame |
 | `source_health.py` | Bounded source health, local capture age and displayed-image age, independent of custody |
@@ -260,7 +262,74 @@ not acquire those inputs or infer missing provenance.
 
 ## Auditability
 
-Every decision emits an event carrying the numbers that produced it. A session replays from its log, without the video:
+### Incremental journal and retention
+
+The live command retains at most `--event-tail 1000` recent events in RAM by
+default and says when disk recording is disabled. This is an event-count bound,
+not a byte budget or a bound on other session structures. Batch `run_session`
+and the legacy `EventLog` default still retain full history. To persist events:
+
+```powershell
+.venv\Scripts\python.exe scripts/serve.py scene.mp4 --metres-per-pixel 0.006 --journal-dir outputs/journal --journal-part-records 10000
+```
+
+Each run creates a fresh opaque session directory with exclusive numbered
+parts (`000000.jsonl`, etc.). Existing sessions are never overwritten or
+automatically deleted. Rotation counts all records, including lifecycle
+records; it continues the same association segment and sequence. Disk retention
+is unlimited until an operator applies a separate policy; this command prunes
+no footage, events or checkpoints.
+
+The version 1 envelope has `session_id`, `segment_id`, contiguous `sequence`,
+`kind` and `payload`. Segment start, interruption and end are explicit. Event
+payloads retain `Event.to_dict`, including negative bag IDs and human
+`origem: operador`. The journal adds no frames, appearance descriptors, camera
+URLs or personal paths. Source/storage failures never become custody flags.
+
+| Confirmation | Meaning |
+|---|---|
+| `pending_records` | A write/synchronization is in progress; no new acknowledgement is implied. |
+| `last_written_sequence`, `written_events` | A complete line was written and flushed out of the Python buffer; it is readable before normal shutdown. |
+| `synced_through` | Last sequence for which an explicit OS synchronization request returned successfully. |
+| `unconfirmed_events` | Recording was not confirmed under the selected policy. The event may still exist on disk; this does not prove loss. |
+
+Every record is flushed. `--journal-fsync` additionally requests synchronization
+for each record, at a potential throughput cost. Without it, confirmed writes
+can still be lost on OS/power failure; that loss window has not been measured.
+An OS acknowledgement does not establish hardware power-loss immunity, and
+JSONL does not make an audit log tamper-proof.
+
+The first write/serialization/synchronization failure stops further journal
+writes and appears in the state and screen. Recent events remain in the bounded
+RAM tail; unconfirmed events are counted separately. Storage-health queries do
+not wait on the disk-writing lock. Historical images cannot accept new
+pointing requests after source interruption or completion.
+
+Read this format explicitly and incrementally:
+
+```python
+from custody_watch.journal_reader import iter_journal
+
+diagnostics = []
+for record in iter_journal("outputs/journal/SESSION_ID", diagnostics=diagnostics):
+    print(record["sequence"], record["kind"])
+print(diagnostics)
+```
+
+Only the final line without LF in the final part can be skipped as a fragment,
+with a diagnostic (a warning if no collector is supplied). Strict callers can
+set `recover_truncated_tail=False`. Earlier corruption, unknown versions,
+duplicate/missing sequences, incompatible segments and invalid part names are
+errors. An open segment at EOF is reported as incomplete when diagnostics are
+requested. The reader stores part names, seen segment IDs and one decoded
+record; metadata memory grows with parts/segments rather than all event content.
+
+Legacy JSONL remains readable through `EventLog.from_jsonl`, separately from
+this envelope. Exporting a bounded `EventLog` exports only its retained tail.
+Journal replay inspects decisions; it never restores a tracker, person identity,
+bag ownership or visual state after restart.
+
+Every decision emits an event carrying the numbers that produced it. Those decisions can be inspected from the log without the video:
 
 ```json
 {"kind":"bag_owned","t_start":10.0,"bag":100,"party":1,"evidence":{"party":1}}

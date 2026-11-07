@@ -252,11 +252,11 @@ _NAO_ANCORA = _NaoAncora()
 class _Session:
     """Estado de uma passagem sobre um vídeo. Descartado ao fim."""
 
-    def __init__(self, plane: GroundPlane, config: Config) -> None:
+    def __init__(self, plane: GroundPlane, config: Config, events: EventLog | None = None) -> None:
         self.plane = plane
         self.config = config
 
-        self.events = EventLog()
+        self.events = events if events is not None else EventLog()
         self.flags = FlagStore()
         self.parties = PartyManager(config.party)
         self.registry = BagRegistry(config.registry)
@@ -898,9 +898,11 @@ class LiveSession:
     `run_session` é um laço sobre ela, então as duas não têm como divergir.
     """
 
-    def __init__(self, plane: GroundPlane, config: Config | None = None) -> None:
+    def __init__(
+        self, plane: GroundPlane, config: Config | None = None, *, events: EventLog | None = None
+    ) -> None:
         self._plane = plane
-        self._s = _Session(plane, config or Config())
+        self._s = _Session(plane, config or Config(), events=events)
         self._trava = threading.Lock()
         """Apontar vem da thread do HTTP; alimentar vem da do detector. Sem a
         trava, um clique no meio de um quadro leria um registro pela metade."""
