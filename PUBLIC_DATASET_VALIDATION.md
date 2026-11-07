@@ -1,7 +1,7 @@
 # Validação de recortes públicos — 2026-11-06
 
 **Importação, leitura de vídeo e replay executados em NVIDIA e WILDTRACK. MTMMC
-não executada: depende de acesso autorizado.** Os resultados completos, hashes,
+não executada e retirada do plano ativo do projeto pessoal.** Os resultados completos, hashes,
 revisões e limites estão no [registro versionado](validation/public-multicamera-2026-11-06.json).
 
 Cada execução final usou duas câmeras e sete quadros por câmera, cobrindo três
@@ -10,6 +10,10 @@ caixas anotados. Não há treinamento, seed aleatória, inferência de detector,
 associação calculada de identidades ou avaliação de custódia. O registro contém
 um run final por base; as observações repetidas da mesma pessoa não são amostras
 independentes. Não houve uso de GPU.
+
+A retirada da MTMMC é uma decisão do mantenedor após revisar as exigências
+acadêmicas do processo de acesso. O registro JSON da execução anterior permanece
+preservado como histórico; não há solicitação de acesso planejada.
 
 | Base | Recorte executado | Resultado |
 | --- | --- | --- |
@@ -58,6 +62,24 @@ reprojetado na imagem, fica fora dela. A imagem mostra o personagem ocluído por
 outro. Projetar a base dessa caixa no plano do chão produz o desvio próximo de
 98,51 m. Dados e coordenadas do diagnóstico estão no campo
 `datasets.nvidia.diagnostic` do registro.
+
+### Localizar o caso no painel
+
+No laboratório com o recorte NVIDIA, abra
+`/?t=2.5&camera=Camera_0019`. O link seleciona o andar, a câmera e o instante;
+o tempo é limitado ao intervalo do replay. Câmera desconhecida e parâmetros
+inválidos/repetidos mantêm os padrões do painel.
+
+O quadro original `75` corresponde ao índice `5` do clip amostrado, em `2,5 s`.
+A pessoa grande em primeiro plano é a anotação `24`; o caso é a anotação `6`,
+quase encoberta atrás dela. No mesmo instante, os desvios são aproximadamente
+`0,13 m` para `24` e `98,51 m` para `6`. Os valores e caixas estão no
+[diagnóstico por anotação](validation/projection-case-6-2026-11-06.json).
+
+Essas distâncias vêm da comparação offline com as coordenadas anotadas. O painel
+atual mostra a projeção, mas ainda precisa de um inspetor que exponha essa
+comparação. O vídeo pode parecer normal; o teste usa gabarito, sem inferência de
+detector. Na miniatura do mosaico, o pequeno fragmento do ID `6` é difícil de ver.
 
 **Consequência para o projeto:** uma homografia numericamente consistente não
 garante que a base de toda bbox esteja no chão. Antes de associar pessoas entre
@@ -114,7 +136,8 @@ a ausência de `validation.json` com sucesso impede tratá-lo como execução v�
 
 1. Recusar ou qualificar projeções sem contato confiável com o chão.
 2. Melhorar legibilidade dos rótulos da planta em cenas densas; há sobreposição.
-3. Obter acesso autorizado e executar a MTMMC com os arquivos reais.
+3. Ampliar os recortes disponíveis, respeitando as condições de uso; MTMMC fica
+   fora do plano ativo deste projeto pessoal.
 4. Reproduzir percepção real da #56 e, separadamente, medir associação entre
    vistas e custódia com anotações adequadas. IDs comuns herdados do gabarito não
    demonstram re-identificação, e nenhuma anotação de bagagem/posse foi importada.

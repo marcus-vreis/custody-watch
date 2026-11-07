@@ -70,11 +70,13 @@ labelled as having no video. Locally available video sources serve decoded JPEG
 frames; decoding was tested with generated MJPG footage, without a detector or
 GPU. Missing/stale/completed cameras retain explicitly historical images, with
 their own timestamps and ages. Cross-camera identity and custody remain planned.
+Links can select an instant and camera with `?t=2.5&camera=Camera_0019` on the
+NVIDIA sample. The camera's floor is selected and time is clamped to the replay.
 See the [multi-camera contract and roadmap](MULTICAMERA.md) for data sources,
 coordinate conventions and incremental acceptance criteria.
 Public NVIDIA and WILDTRACK clips have now been imported and replayed in oracle
 mode. The [validation record](PUBLIC_DATASET_VALIDATION.md) documents a ground
-projection failure under occlusion and the pending authorized access to MTMMC.
+projection failure under occlusion. MTMMC is outside the active personal-project plan.
 These runs do not validate detection, cross-camera identity or luggage custody.
 
 No system Python needed; `uv` provides one.

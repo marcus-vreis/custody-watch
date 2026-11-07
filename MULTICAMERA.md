@@ -8,7 +8,6 @@ continuam planejadas. Os recortes abaixo não têm números de issues atribuído
 - [x] Mosaico, planta e navegação sincronizada com fixtures e vídeo local gerado.
 - [x] Executar recortes públicos NVIDIA e WILDTRACK no importador e no painel, em oracle.
 - [ ] Recusar posições sem contato confiável com o chão: contraexemplo observado na NVIDIA.
-- [ ] Validar MTMMC após acesso autorizado aos arquivos.
 - [ ] Medir associação conservadora entre vistas, incluindo recusas e ambiguidades.
 - [ ] Medir custódia entre vistas com anotações próprias de posse.
 - [ ] Validar câmeras físicas e realizar demonstração controlada autorizada.
@@ -16,6 +15,11 @@ continuam planejadas. Os recortes abaixo não têm números de issues atribuído
 O baseline real de percepção da #56 continua em aberto e é necessário para
 avaliar custódia. Concluir a interface não conclui essas validações.
 Resultados e limites dos recortes: [validação pública](PUBLIC_DATASET_VALIDATION.md).
+
+MTMMC foi retirada do plano ativo por decisão do mantenedor: o projeto é pessoal
+e as exigências de vínculo acadêmico do processo de acesso não correspondem ao
+seu contexto. O registro histórico da consulta permanece; não há tarefa pendente
+de obter afiliação, assinatura de orientador ou solicitar acesso a essa base.
 
 ## Ponto de partida verificado
 
@@ -49,6 +53,17 @@ câmeras, mas não sustenta medidas de distância ou posição das pessoas.
 O ID de trajetória é temporário e local ao experimento, sem nome de pessoa ou
 consulta a banco de identidades. Reconhecimento facial continua fora de escopo.
 
+### Ajustes da interface ainda em aberto
+
+- Ampliar câmera/zoom para inspecionar caixas pequenas do mosaico.
+- Inspecionar um ID com câmera, quadro original, tempo e coordenadas; apresentar
+  comparação com gabarito apenas quando esse dado estiver disponível e rotulado.
+- Reduzir sobreposição e corte dos rótulos da planta em cenas densas.
+- Refinar hierarquia visual e navegação conforme os fluxos de acompanhamento.
+
+O link por câmera/instante já permite abrir casos específicos para revisão;
+esses ajustes e a política de posição incerta continuam pendentes.
+
 ## Laboratórios públicos encontrados
 
 Fontes primárias consultadas em 2026-11-06. Não houve download de vídeos/pesos,
@@ -59,7 +74,7 @@ aceite de termos, solicitação de acesso ou execução dessas aplicações.
 | [NVIDIA PhysicalAI-SmartSpaces](https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces) | Conjuntos sincronizados; nas edições 2025/2026, calibração, `map.png`, posições 3D e IDs entre vistas para as cenas sintéticas anotadas. A ficha declara CC BY 4.0. | Melhor candidato inicial para ligar planta e trajetórias. Selecionar uma cena e poucas câmeras RGB; mapas de profundidade são opcionais e grandes. As capturas reais de teste de 2026 não disponibilizam ground truth. |
 | [WILDTRACK, EPFL](https://www.epfl.ch/labs/cvlab/data/data-wildtrack/) | Sete câmeras reais, vistas sobrepostas, sincronização, calibração e anotações. | Segundo passo para geometria e oclusões reais. Distinguir os quadros anotados dos vídeos completos; a página descreve taxas de amostragem diferentes. Termos e disponibilidade dos arquivos ainda precisam ser conferidos antes da aquisição. |
 | [MultiviewX, autores](https://github.com/hou-yz/MultiviewX) | Seis vistas sintéticas sobrepostas, sincronizadas e calibradas. | Alternativa para geometria. Foi publicado para detecção multivista; não assumir um protocolo completo de tracking temporal ou de custódia. Download e condições de uso não foram exercitados. |
-| [MTMMC, autores](https://sites.google.com/view/mtmmc) | Câmeras em campus e fábrica, topologia com áreas internas/externas e vários andares. | Experimento posterior com topologia mais realista. Acesso depende de solicitação e acordo assinado; não é a primeira dependência do desenvolvimento. |
+| [MTMMC, autores](https://sites.google.com/view/mtmmc) | Câmeras em campus e fábrica, topologia com áreas internas/externas e vários andares. | Fora do plano ativo por decisão do mantenedor para o projeto pessoal; consulta de acesso registrada, sem execução. |
 
 A NVIDIA também publica uma [aplicação de referência MTMC](https://docs.nvidia.com/mms/text/MDX_Multi_Camera_Tracking_App.html)
 que simula câmeras por arquivos transmitidos em RTSP. Sua
@@ -186,8 +201,8 @@ o cache continua acessível e a imagem é declarada indisponível.
 
 Recortes públicos NVIDIA e WILDTRACK já foram importados e reproduzidos, com
 anotações em modo oracle. A projeção da base da bbox mostrou um contraexemplo
-com pés ocluídos; não há aprovação geral de precisão geométrica. MTMMC ainda
-depende de acesso autorizado. Não há benchmark de qualidade de detecção,
+com pés ocluídos; não há aprovação geral de precisão geométrica. MTMMC foi
+retirada do plano ativo do projeto pessoal. Não há benchmark de qualidade de detecção,
 associação ou custódia multicâmera nesta interface.
 
 ### 3. Associação entre vistas, medida separadamente

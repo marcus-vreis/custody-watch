@@ -40,9 +40,13 @@ def test_pagina_usa_assets_locais_e_nao_codigo_inline(replay_server):
         assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     assert "/assets/multicamera.js" in text
     assert "/assets/multicamera.css" in text
+    assert "/assets/replay_link.js" in text
     with _get(replay_server, "/assets/multicamera.js") as response:
         assert "javascript" in response.headers["Content-Type"]
         assert response.read()
+    with _get(replay_server, "/assets/replay_link.js") as response:
+        assert "javascript" in response.headers["Content-Type"]
+        assert b"replayTarget" in response.read()
 
 
 def test_config_e_estado_tem_relogio_compartilhado(replay_server):
