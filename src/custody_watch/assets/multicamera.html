@@ -6,6 +6,7 @@
   <title>Laboratório multicâmera · custody-watch</title>
   <link rel="stylesheet" href="/assets/multicamera.css">
   <script src="/assets/replay_link.js" defer></script>
+  <script src="/assets/map_positions.js" defer></script>
   <script src="/assets/multicamera.js" defer></script>
 </head>
 <body>
@@ -28,8 +29,10 @@
           <span class="small-tag">METROS</span></div>
         <div class="map-wrap"><svg id="map" viewBox="0 0 640 420" role="img" aria-label="Câmeras e observações locais na planta"></svg></div>
         <div class="map-options"><label><input id="history" type="checkbox" checked> Últimas observações</label>
-          <span class="legend"><b class="dot"></b> Atual <b class="ghost-dot"></b> Histórica</span></div>
-        <p class="map-note">Posições projetadas da base das caixas: pés ocultos podem gerar desvios. Cobertura declarada; oclusões não modeladas. IDs de câmeras diferentes permanecem separados.</p>
+          <span class="legend"><b class="dot"></b> Diagnóstico atual <b class="ghost-dot"></b> Histórico</span></div>
+        <div class="map-options"><label><input id="diagnostics" type="checkbox"> Projeções diagnósticas (chão não verificado)</label></div>
+        <p class="map-note" id="position-summary" aria-live="polite"></p>
+        <p class="map-note">As observações atuais não comprovam contato com o chão. Projeções diagnósticas são hipóteses, sem elegibilidade para associação. Cobertura declarada não garante visibilidade.</p>
       </section>
       <section class="mosaic-panel" aria-label="Mosaico de câmeras">
         <div class="mosaic-heading"><h2>Câmeras do andar</h2><span id="selected-label">Selecione uma câmera</span></div>

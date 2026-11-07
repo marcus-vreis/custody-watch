@@ -24,7 +24,7 @@ def main() -> int:
             raise ValueError("output já existe; escolha outro diretório para preservar o resultado")
         registry = load_camera_registry(args.registry)
         summary = {
-            "schema_version": 1,
+            "schema_version": 2,
             "site_id": registry.site_id,
             "registry_sha256": registry.manifest_sha256,
             "clock": "t = media_t + offset_s; segundos relativos ao experimento",

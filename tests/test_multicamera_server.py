@@ -41,12 +41,17 @@ def test_pagina_usa_assets_locais_e_nao_codigo_inline(replay_server):
     assert "/assets/multicamera.js" in text
     assert "/assets/multicamera.css" in text
     assert "/assets/replay_link.js" in text
+    assert "/assets/map_positions.js" in text
+    assert '<input id="diagnostics" type="checkbox">' in text
     with _get(replay_server, "/assets/multicamera.js") as response:
         assert "javascript" in response.headers["Content-Type"]
         assert response.read()
     with _get(replay_server, "/assets/replay_link.js") as response:
         assert "javascript" in response.headers["Content-Type"]
         assert b"replayTarget" in response.read()
+    with _get(replay_server, "/assets/map_positions.js") as response:
+        assert "javascript" in response.headers["Content-Type"]
+        assert b"mapPosition" in response.read()
 
 
 def test_config_e_estado_tem_relogio_compartilhado(replay_server):
@@ -55,6 +60,11 @@ def test_config_e_estado_tem_relogio_compartilhado(replay_server):
     with _get(replay_server, "/api/state?t=2") as response:
         state = json.load(response)
     assert config["site_id"] == "synthetic-hall"
+    assert config["schema_version"] == state["schema_version"] == 2
+    track = state["cameras"][0]["tracks"][0]
+    assert track["position_m"] is None
+    assert track["projected_position_m"] is not None
+    assert track["association_eligible"] is False
     assert state["cameras"][1]["status"] == "missing"
     assert state["cameras"][1]["image"]["historical"] is True
     assert state["cameras"][1]["image"]["t"] == 1

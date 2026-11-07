@@ -23,8 +23,8 @@ jobs:
           node-version: '24'
           package-manager-cache: false
 
-      - name: links do replay
-        run: node --test tests/test_replay_link.cjs
+      - name: interface do replay
+        run: node --test tests/test_replay_link.cjs tests/test_map_positions.cjs
 
       - run: uv sync --extra dev
 

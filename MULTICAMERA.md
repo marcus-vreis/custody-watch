@@ -1,13 +1,14 @@
 # Plano para câmeras, mapa e acompanhamento multicâmera
 
-Estado em 2026-11-06: **cadastro, relógio comum, mosaico e planta de replay
+Estado em 2026-11-07: **cadastro, relógio comum, mosaico e planta de replay
 implementados em CPU**. Associação entre câmeras e transferência de custódia
-continuam planejadas. Os recortes abaixo não têm números de issues atribuídos no GitHub.
+continuam planejadas. O roadmap separa implementações de validações ainda pendentes.
 
 - [x] Cadastro de ambiente e relógio comum de replay.
 - [x] Mosaico, planta e navegação sincronizada com fixtures e vídeo local gerado.
 - [x] Executar recortes públicos NVIDIA e WILDTRACK no importador e no painel, em oracle.
-- [ ] Recusar posições sem contato confiável com o chão: contraexemplo observado na NVIDIA.
+- [x] Recusar posições sem contato comprovado com o chão; projeção diagnóstica separada (#75).
+- [ ] Definir evidência de contato por observação e medir sua confiabilidade antes de liberar posições.
 - [ ] Medir associação conservadora entre vistas, incluindo recusas e ambiguidades.
 - [ ] Medir custódia entre vistas com anotações próprias de posse.
 - [ ] Validar câmeras físicas e realizar demonstração controlada autorizada.
@@ -61,8 +62,10 @@ consulta a banco de identidades. Reconhecimento facial continua fora de escopo.
 - Reduzir sobreposição e corte dos rótulos da planta em cenas densas.
 - Refinar hierarquia visual e navegação conforme os fluxos de acompanhamento.
 
-O link por câmera/instante já permite abrir casos específicos para revisão;
-esses ajustes e a política de posição incerta continuam pendentes.
+O link por câmera/instante já permite abrir casos específicos para revisão.
+A política conservadora da #75 recusa todas as posições dos caches atuais para
+associação; a planta só mostra essas projeções mediante opção diagnóstica explícita.
+Os ajustes de inspeção e um contrato de evidência de contato continuam pendentes.
 
 ## Laboratórios públicos encontrados
 
@@ -147,6 +150,47 @@ sem referencial comum declarado. Não exporta assinaturas de aparência, IDs
 globais, eventos de custódia ou métricas de tracking. A projeção é checada antes
 de criar o diretório final; falhas de escrita posteriores podem deixar saída
 parcial, e a CLI termina com erro.
+
+#### Saída de replay v2: posição incerta (#75)
+
+O cadastro e os manifests de sequência continuam estritamente na versão 1.
+Desde a #75, `summary.json`, os quadros de `frames.jsonl` e as respostas de
+`/api/config` e `/api/state` declaram `schema_version: 2`. Consumidores da saída
+v1 precisam migrar: a posição antes projetada em `position_m` passa para
+`projected_position_m` e não comprova contato com o chão.
+
+Cada track contém:
+
+| Campo | Contrato v2 |
+| --- | --- |
+| `position_m` | `null` para todos os caches atuais: não há evidência por observação que qualifique contato no chão. |
+| `projected_position_m` | Projeção bruta da base da bbox em metros, apenas diagnóstica; `null` sem referencial comum. Valores não finitos continuam recusados. |
+| `position_status` | `no_common_frame`, `image_border` se `touches_bottom=true`, ou `ground_contact_unknown`. `false`/`null` não comprovam pés visíveis. |
+| `association_eligible` | Sempre `false` neste contrato; não existe associação entre vistas implementada. |
+
+O mesmo tratamento vale para detector, sintético e oracle. Não se infere
+visibilidade por tamanho da caixa, classe, identidade anotada ou erro contra o
+gabarito. Câmera, segmento, quadro, bbox e relógio são preservados. A última
+observação histórica carrega a mesma incerteza, sem transportar uma posição
+anterior aceita ou reconstruir contato por interpolação.
+
+A planta mantém câmeras e cobertura, mas oculta projeções por padrão. A opção
+"Projeções diagnósticas (chão não verificado)" mostra marcadores vazados,
+tracejados e rotulados com `?`. Sua habilitação não altera `position_m` nem
+autoriza associação. A interface informa contagem atual e histórica separadas;
+somente pontos realmente exibidos participam da escala do mapa.
+
+Esta entrega é uma abstenção explícita, não um detector de oclusões. Liberar
+posições exige outro contrato versionado de evidência por observação, validação
+de sua proveniência e medição de erro; permanece tarefa separada. Os resultados
+históricos de projeção, incluindo o contraexemplo NVIDIA, não foram recalculados.
+
+Validação do gate em CPU: um run por recorte oracle existente. As 132 observações
+NVIDIA e 422 WILDTRACK conservaram a projeção diagnóstica e nenhuma foi liberada
+para associação. Contagens, hashes e o caso Camera_0019/#6 em 2,5 s estão em
+[`validation/ground-contact-gate-2026-11-07.json`](validation/ground-contact-gate-2026-11-07.json).
+Isso comprova a abstenção do contrato, não a detecção de oclusões ou precisão de
+localização. Não houve nova inferência nem download.
 
 O fixture contém somente números/observações geradas e duas calibrações
 sintéticas, sem arquivos de vídeo. A coincidência de posições entre vistas
