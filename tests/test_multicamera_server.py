@@ -129,3 +129,31 @@ def test_inspecao_recusa_parametros_invalidos(replay_server, suffix):
             "/api/image?camera_id=cam-a&segment_id=segment-1&frame_index=0" + suffix,
         )
     assert caught.value.code == 400
+
+
+def test_imagem_vinculada_aos_hashes_e_tracks_do_snapshot(replay_server):
+    with _get(replay_server, "/api/state?t=0") as response:
+        image = json.load(response)["cameras"][0]["image"]
+    assert image["tracks"][0]["track_key"]["local_track_id"] == 1
+    with _get(replay_server, image["url"] + "&resolution=source") as response:
+        assert response.status == 200
+
+
+@pytest.mark.parametrize("change", ["registry", "sequence", "missing", "duplicate"])
+def test_imagem_de_outro_registro_ou_sequencia_nao_herda_metadados(replay_server, change):
+    with _get(replay_server, "/api/state?t=0") as response:
+        image = json.load(response)["cameras"][0]["image"]
+    url = image["url"]
+    if change == "registry":
+        url = url.replace(image["registry_sha256"], "0" * 64)
+    elif change == "sequence":
+        url = url.replace(image["sequence_sha256"], "0" * 64)
+    elif change == "missing":
+        url = url.replace("&sequence_sha256=" + image["sequence_sha256"], "")
+    else:
+        url += "&registry_sha256=" + image["registry_sha256"]
+
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        _get(replay_server, url)
+
+    assert caught.value.code == 400

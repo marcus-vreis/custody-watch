@@ -192,3 +192,22 @@ def test_snapshot_recusa_tempo_invalido(tmp_path, t):
 
     with pytest.raises(ValueError):
         view.snapshot(t)
+
+
+def test_imagem_carrega_hashes_e_tracks_somente_do_quadro_exibido(tmp_path):
+    registry = load_camera_registry(make_registry(tmp_path))
+    view = ReplayView(registry)
+    config = view.config()
+    current = view.snapshot(0)["cameras"][1]
+    historical = view.snapshot(2)["cameras"][1]
+
+    assert config["registry_sha256"] == registry.manifest_sha256
+    assert config["cameras"][1]["sequence_sha256"] == registry.cameras[1].recording.manifest_sha256
+    assert current["image"]["tracks"] == current["tracks"]
+    assert current["image"]["registry_sha256"] == registry.manifest_sha256
+    assert current["image"]["sequence_sha256"] == registry.cameras[1].recording.manifest_sha256
+    assert f"registry_sha256={registry.manifest_sha256}" in current["image"]["url"]
+    assert historical["image"]["frame_index"] == 1
+    assert historical["image"]["tracks"] == []
+    assert historical["last_tracks"]
+    assert view.snapshot(0)["cameras"][1]["image"]["tracks"] == current["tracks"]

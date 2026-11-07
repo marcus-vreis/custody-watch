@@ -29,6 +29,26 @@ def _query(query: str, fields: set[str]) -> dict[str, str]:
     return {key: value[0] for key, value in values.items()}
 
 
+def _image_fields(query: str, config: dict) -> dict[str, str]:
+    provided = parse_qs(query, keep_blank_values=True)
+    expected = {"camera_id", "segment_id", "frame_index"}
+    if "resolution" in provided:
+        expected.add("resolution")
+    hashes = {"registry_sha256", "sequence_sha256"}
+    if hashes & provided.keys():
+        expected.update(hashes)
+    fields = _query(query, expected)
+    if "registry_sha256" in fields:
+        camera = next((c for c in config["cameras"] if c["camera_id"] == fields["camera_id"]), None)
+        if (
+            fields["registry_sha256"] != config["registry_sha256"]
+            or camera is None
+            or fields["sequence_sha256"] != camera["sequence_sha256"]
+        ):
+            raise ValueError("imagem vinculada a outro cadastro ou sequência")
+    return fields
+
+
 class ReplayServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -80,10 +100,7 @@ class _Handler(BaseHTTPRequestHandler):
                 fields = _query(route.query, {"t"})
                 self._json(200, self.server.view.snapshot(float(fields["t"])))
             elif route.path == "/api/image":
-                expected = {"camera_id", "segment_id", "frame_index"}
-                if "resolution" in parse_qs(route.query, keep_blank_values=True):
-                    expected.add("resolution")
-                fields = _query(route.query, expected)
+                fields = _image_fields(route.query, self.server.config)
                 image = self.server.images.get(
                     fields["camera_id"],
                     fields["segment_id"],
