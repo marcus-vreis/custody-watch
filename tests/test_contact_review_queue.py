@@ -171,8 +171,9 @@ def test_id_fora_da_precisao_inteira_do_painel_e_recusado(tmp_path):
 )
 def test_parametros_invalidos_sao_recusados(tmp_path, params):
     path, _ = make_video_registry(tmp_path)
-    with pytest.raises(ValueError):
-        prepare_contact_review_queue(load_camera_registry(path), **{"seed": 7, **params})
+    registry = load_camera_registry(path)
+    with pytest.raises(ValueError, match=next(iter(params))):
+        prepare_contact_review_queue(registry, **{"seed": 7, **params})
 
 
 def test_cli_preserva_arquivo_existente_e_publica_fila_nova(tmp_path):
