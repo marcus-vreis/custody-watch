@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 716 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 734 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -166,6 +166,24 @@ Build the operator's review page, with annotated clips:
 ```bash
 uv run python scripts/build_report.py
 ```
+
+The review HTML has a total default budget of **15,000,000 UTF-8 bytes**, shared
+by all sessions. Configure it with `--report-max-bytes` in `build_report.py` or
+`watch_video.py`, or `max_bytes` in `render_report`/`write_report`. The budget
+includes text, styles and the base64 expansion of embedded GIFs.
+
+When clips do not fit, lower-priority clips are omitted first: smaller ranks
+take precedence, with input session/item order breaking ties. Media forms a
+priority prefix; if the first clip is too large, no lower-ranked clip replaces
+it. All queue entries, timestamps, scores and explanations stay in the HTML,
+with explicit placeholders and a notice about omitted media. Source GIFs are
+not modified or deleted. A small report embeds all clips as before.
+
+Only selected GIFs are read, with bounded reads and a size-change check. If
+text and placeholders alone cannot fit, report generation refuses rather than
+truncating decisions. Validation happens before writing the destination, so
+a budget refusal preserves a previous report. This is a page-size budget,
+not a budget for video processing, clip generation or peak Python memory.
 
 ### Replaying recorded predictions in CPU
 

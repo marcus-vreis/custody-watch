@@ -34,6 +34,13 @@ NIVEIS = {
     "N1": ("permanência prolongada", "n1"),
 }
 
+DEFAULT_MAX_REPORT_BYTES = 15_000_000
+OMITTED_CLIP = '<div class="clipe vazio">clipe omitido pelo limite da página</div>'
+BUDGET_NOTICE = (
+    '<p class="aviso">Alguns clipes foram omitidos pelo limite de tamanho da página. '
+    "Todos os itens da fila e suas explicações foram preservados.</p>"
+)
+
 
 @dataclass(frozen=True)
 class ReviewItem:
@@ -61,23 +68,28 @@ def _timestamp(segundos: float) -> str:
     return f"{minutos:02d}:{resto:02d}"
 
 
-def _data_uri(caminho: Path | None) -> str | None:
+def _data_uri(caminho: Path, expected_bytes: int) -> str:
     """GIF embutido na página: o artifact bloqueia host externo."""
-    if caminho is None or not caminho.exists():
-        return None
-    dados = base64.b64encode(caminho.read_bytes()).decode("ascii")
-    return f"data:image/gif;base64,{dados}"
+    with caminho.open("rb") as handle:
+        dados = handle.read(expected_bytes + 1)
+    if len(dados) != expected_bytes:
+        raise ValueError("clipe mudou de tamanho durante a geração; gere o relatório novamente")
+    return f"data:image/gif;base64,{base64.b64encode(dados).decode('ascii')}"
 
 
-def _cartao(item: ReviewItem) -> str:
+def _image_markup(item: ReviewItem, uri: str) -> str:
+    return (
+        f'<img class="clipe" src="{uri}" alt="Trecho de {_timestamp(item.clip_start)} '
+        f'a {_timestamp(item.clip_end)}, com a pessoa sinalizada e a bagagem destacadas">'
+    )
+
+
+def _cartao(item: ReviewItem, uri: str | None, omitted: bool) -> str:
     rotulo, classe = NIVEIS.get(item.level, ("sinalizado", "n1"))
-    uri = _data_uri(item.clip_path)
-
     if uri:
-        midia = (
-            f'<img class="clipe" src="{uri}" alt="Trecho de {_timestamp(item.clip_start)} '
-            f'a {_timestamp(item.clip_end)}, com a pessoa sinalizada e a bagagem destacadas">'
-        )
+        midia = _image_markup(item, uri)
+    elif omitted:
+        midia = OMITTED_CLIP
     else:
         midia = '<div class="clipe vazio">trecho indisponível</div>'
 
@@ -102,9 +114,12 @@ def _cartao(item: ReviewItem) -> str:
 </article>"""
 
 
-def _sessao(sessao: SessionReport) -> str:
+def _sessao(sessao: SessionReport, index: int, media: dict, omitted: set) -> str:
     if sessao.items:
-        itens = "".join(_cartao(i) for i in sessao.items)
+        itens = "".join(
+            _cartao(item, media.get((index, position)), (index, position) in omitted)
+            for position, item in enumerate(sessao.items)
+        )
     else:
         itens = '<p class="silencio">Nenhum item chegou à fila. O sistema ficou calado.</p>'
 
@@ -129,14 +144,73 @@ def render_report(
     *,
     titulo: str = "Revisão de Custódia",
     aviso: str = "",
+    max_bytes: int = DEFAULT_MAX_REPORT_BYTES,
+) -> str:
+    """HTML em UTF-8 com limite total; mídia sai do fim da prioridade.
+
+    Rank menor vem primeiro; empate entre sessões usa a ordem de entrada.
+    A fila e seus textos nunca são truncados. Se eles não couberem, recusa.
+    Só arquivos escolhidos são lidos; o custo de base64 é previsto pelo tamanho.
+    """
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError("max_bytes: esperado inteiro positivo")
+    candidates = []
+    for session_index, session in enumerate(sessions):
+        for position, item in enumerate(session.items):
+            if item.clip_path is not None and item.clip_path.is_file():
+                size = item.clip_path.stat().st_size
+                image_size = len(_image_markup(item, "data:image/gif;base64,").encode("utf-8"))
+                delta = image_size + 4 * ((size + 2) // 3) - len(OMITTED_CLIP.encode("utf-8"))
+                candidates.append(
+                    ((item.rank, session_index, position), item.clip_path, size, delta)
+                )
+    omitted = {(priority[1], priority[2]) for priority, *_ in candidates}
+    baseline = _render_report(sessions, titulo=titulo, aviso=aviso, media={}, omitted=omitted)
+    baseline_size = len(baseline.encode("utf-8"))
+    full_size = baseline_size + sum(c[3] for c in candidates)
+    if candidates:
+        full_size -= len(BUDGET_NOTICE.encode("utf-8"))
+    selected = []
+    if full_size <= max_bytes:
+        selected = candidates
+    else:
+        if baseline_size > max_bytes:
+            raise ValueError("conteúdo textual do relatório excede max_bytes; divida as sessões")
+        used = baseline_size
+        for candidate in sorted(candidates):
+            if used + candidate[3] > max_bytes:
+                break
+            selected.append(candidate)
+            used += candidate[3]
+    media = {}
+    for priority, path, size, _ in selected:
+        key = (priority[1], priority[2])
+        media[key] = _data_uri(path, size)
+        omitted.remove(key)
+    result = _render_report(sessions, titulo=titulo, aviso=aviso, media=media, omitted=omitted)
+    if len(result.encode("utf-8")) > max_bytes:
+        raise ValueError("relatório excede max_bytes após incorporar os clipes")
+    return result
+
+
+def _render_report(
+    sessions: list[SessionReport],
+    *,
+    titulo: str,
+    aviso: str,
+    media: dict,
+    omitted: set,
 ) -> str:
     total = sum(len(s.items) for s in sessions)
     minutos = sum(s.duration_s for s in sessions) / 60.0
-    corpo = "".join(_sessao(s) for s in sessions)
+    corpo = "".join(_sessao(s, index, media, omitted) for index, s in enumerate(sessions))
 
     bloco_aviso = f'<p class="aviso">{html.escape(aviso)}</p>' if aviso else ""
+    if omitted:
+        bloco_aviso += BUDGET_NOTICE
 
-    return f"""<title>{html.escape(titulo)}</title>
+    return f"""<meta charset="utf-8">
+<title>{html.escape(titulo)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -433,6 +507,8 @@ h2 {{ font-size: 1.6rem; line-height: 1.15; }}
 
 
 def write_report(sessions: list[SessionReport], destino: Path, **kwargs) -> Path:
+    rendered = render_report(sessions, **kwargs)
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(render_report(sessions, **kwargs), encoding="utf-8")
+    # Escrever bytes preserva a contagem UTF-8 no Windows (sem traduzir LF).
+    destino.write_bytes(rendered.encode("utf-8"))
     return destino

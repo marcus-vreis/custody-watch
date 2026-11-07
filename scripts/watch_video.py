@@ -26,7 +26,7 @@ from pathlib import Path
 from custody_watch.calibration import plane_from, uniform_scale_warning
 from custody_watch.config import Config, load_config
 from custody_watch.orchestrator import run_session
-from custody_watch.report import SessionReport, write_report
+from custody_watch.report import DEFAULT_MAX_REPORT_BYTES, SessionReport, write_report
 from custody_watch.review import review_items
 from custody_watch.tracking import TrackedDetection
 from custody_watch.video import (
@@ -91,7 +91,15 @@ def main() -> int:
     parser.add_argument(
         "--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE, help="corte do detector"
     )
+    parser.add_argument(
+        "--report-max-bytes",
+        type=int,
+        default=DEFAULT_MAX_REPORT_BYTES,
+        help="teto do HTML em bytes UTF-8; clipes saem do fim do ranking",
+    )
     args = parser.parse_args()
+    if args.report_max_bytes <= 0:
+        parser.error("--report-max-bytes exige inteiro positivo")
 
     if not args.video.exists():
         print(f"vídeo não encontrado: {args.video}", file=sys.stderr)
@@ -172,12 +180,11 @@ def main() -> int:
         SAIDA / f"revisao_{nome}.html",
         titulo=f"Revisão de Custódia — {nome}",
         aviso=AVISO,
+        max_bytes=args.report_max_bytes,
     )
 
     tamanho = destino.stat().st_size / 1e6
     print(f"\npágina: {destino}  ({tamanho:.1f} MB)")
-    if tamanho > 15.0:
-        print("AVISO: perto do teto de 16 MB do artifact", file=sys.stderr)
     return 0
 
 

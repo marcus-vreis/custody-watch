@@ -14,6 +14,7 @@ contexto induziria a achar que o sistema encontrou alguma coisa.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from functools import partial
 from pathlib import Path
@@ -28,7 +29,7 @@ from custody_watch.caviar import (
 )
 from custody_watch.config import Config
 from custody_watch.orchestrator import run_session
-from custody_watch.report import SessionReport, write_report
+from custody_watch.report import DEFAULT_MAX_REPORT_BYTES, SessionReport, write_report
 from custody_watch.review import review_items
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -44,6 +45,16 @@ AVISO = (
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--report-max-bytes",
+        type=int,
+        default=DEFAULT_MAX_REPORT_BYTES,
+        help="teto do HTML em bytes UTF-8; clipes saem do fim do ranking",
+    )
+    args = parser.parse_args()
+    if args.report_max_bytes <= 0:
+        parser.error("--report-max-bytes exige inteiro positivo")
     if not DATA.exists():
         print(f"dataset ausente em {DATA}", file=sys.stderr)
         print("rode primeiro: uv run python scripts/download_caviar.py", file=sys.stderr)
@@ -79,11 +90,10 @@ def main() -> int:
         SAIDA / "fila_de_revisao.html",
         titulo="Revisão de Custódia",
         aviso=AVISO,
+        max_bytes=args.report_max_bytes,
     )
     tamanho = destino.stat().st_size / 1e6
     print(f"\npágina: {destino}  ({tamanho:.1f} MB)")
-    if tamanho > 15.0:
-        print("AVISO: perto do teto de 16 MB do artifact", file=sys.stderr)
     return 0
 
 

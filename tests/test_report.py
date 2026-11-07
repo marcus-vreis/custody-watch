@@ -1,4 +1,10 @@
+import base64
+import subprocess
+import sys
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from custody_watch.report import ReviewItem, SessionReport, render_report, write_report
 
@@ -29,6 +35,12 @@ def test_pagina_tem_titulo_proprio():
     html = render_report([sessao()], titulo="Revisão de Custódia")
 
     assert "<title>Revisão de Custódia</title>" in html
+
+
+def test_html_autocontido_declara_utf8_antes_do_texto_portugues():
+    document = render_report([sessao()], titulo="Revisão de Custódia 🧳").encode("utf-8")
+    assert b'<meta charset="utf-8">' in document[:1024]
+    assert document.index(b'<meta charset="utf-8">') < document.index(b"<title>")
 
 
 def test_conta_itens_e_duracao_no_placar():
@@ -162,3 +174,137 @@ def test_write_report_cria_o_arquivo(tmp_path):
 
     assert destino.exists()
     assert "custody-watch" in destino.read_text(encoding="utf-8")
+
+
+def _com_clipe(tmp_path, rank, byte=b"a"):
+    path = tmp_path / f"clip-{rank}-{byte.hex()}.gif"
+    path.write_bytes(b"GIF89a" + byte * 2048)
+    return replace(item(rank, person=rank), clip_path=path)
+
+
+def test_orcamento_retira_clipes_do_fim_do_ranking_e_mantem_fila_e_explicacoes(tmp_path):
+    top = _com_clipe(tmp_path, 1)
+    low = _com_clipe(tmp_path, 2, b"b")
+    sessions = [sessao(itens=[low, top])]
+    full = render_report(sessions)
+    limit = len(full.encode("utf-8")) - 1000
+
+    bounded = render_report(sessions, max_bytes=limit)
+
+    assert len(bounded.encode("utf-8")) <= limit
+    assert bounded.count("data:image/gif;base64,") == 1
+    assert base64.b64encode(top.clip_path.read_bytes()).decode() in bounded
+    assert base64.b64encode(low.clip_path.read_bytes()).decode() not in bounded
+    assert bounded.count('<article class="item">') == 2
+    assert bounded.count("foi retirada em 00:47") == 2
+    assert "clipe omitido pelo limite da página" in bounded
+    assert sessions[0].items == [low, top]
+
+
+def test_orcamento_e_compartilhado_entre_sessoes_com_prioridade_estavel(tmp_path):
+    first = _com_clipe(tmp_path, 1)
+    other = _com_clipe(tmp_path, 1, b"b")
+    sessions = [sessao("Primeira", [first]), sessao("Segunda", [other])]
+    full = render_report(sessions)
+    bounded = render_report(sessions, max_bytes=len(full.encode("utf-8")) - 1000)
+    assert bounded.count("data:image/gif;base64,") == 1
+    assert base64.b64encode(first.clip_path.read_bytes()).decode() in bounded
+    assert "Primeira" in bounded and "Segunda" in bounded
+
+
+def test_limite_exato_conta_utf8_e_cabe_sem_omitir_clipes(tmp_path):
+    session = sessao("áé漢字", [_com_clipe(tmp_path, 1)])
+    full = render_report([session], titulo="Revisão 🧳")
+    exact = len(full.encode("utf-8"))
+    assert exact > len(full)
+    assert render_report([session], titulo="Revisão 🧳", max_bytes=exact) == full
+
+
+def test_clipe_que_nao_cabe_nao_e_lido_nem_substituido_por_rank_menor(tmp_path, monkeypatch):
+    from custody_watch import report
+
+    top = _com_clipe(tmp_path, 1)
+    with top.clip_path.open("wb") as handle:
+        handle.truncate(1_000_000)
+    low = _com_clipe(tmp_path, 2)
+
+    def fail(*_args, **_kwargs):
+        pytest.fail("não ler mídia fora do orçamento")
+
+    monkeypatch.setattr(report, "_data_uri", fail)
+    bounded = render_report([sessao(itens=[top, low])], max_bytes=20_000)
+    assert "data:image/gif;base64," not in bounded
+    assert bounded.count("clipe omitido pelo limite da página") == 2
+
+
+def test_limite_padrao_conta_expansao_base64_sem_ler_clipe_grande(tmp_path, monkeypatch):
+    from custody_watch import report
+
+    top = _com_clipe(tmp_path, 1)
+    with top.clip_path.open("wb") as handle:
+        handle.truncate(12_000_000)  # base64 sozinho ocuparia 16.000.000 bytes
+
+    def fail(*_args, **_kwargs):
+        pytest.fail("clipe que excede 15 MB após base64 não deve ser lido")
+
+    monkeypatch.setattr(report, "_data_uri", fail)
+    bounded = render_report([sessao(itens=[top])])
+    assert len(bounded.encode("utf-8")) <= 15_000_000
+    assert "clipe omitido pelo limite da página" in bounded
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 1.5, None])
+def test_orcamento_exige_numero_inteiro_positivo(limit):
+    with pytest.raises(ValueError, match="max_bytes"):
+        render_report([sessao()], max_bytes=limit)
+
+
+def test_texto_excede_limite_recusa_antes_de_sobrescrever_relatorio(tmp_path):
+    target = tmp_path / "review.html"
+    target.write_text("relatório anterior", encoding="utf-8")
+    with pytest.raises(ValueError, match="conteúdo textual"):
+        write_report([sessao()], target, max_bytes=1000)
+    assert target.read_text(encoding="utf-8") == "relatório anterior"
+
+
+def test_arquivo_gravado_respeita_bytes_utf8_sem_traduzir_lf_no_windows(tmp_path):
+    sessions = [sessao("áé漢字", [_com_clipe(tmp_path, 1)])]
+    full = render_report(sessions)
+    limit = len(full.encode("utf-8"))
+    target = write_report(sessions, tmp_path / "output.html", max_bytes=limit)
+    assert target.stat().st_size == limit
+    assert target.read_bytes() == full.encode("utf-8")
+
+
+def test_clipe_modificado_apos_orcamento_recusa_sem_substituir_relatorio(tmp_path, monkeypatch):
+    from custody_watch import report
+
+    clip = _com_clipe(tmp_path, 1)
+    original = report._data_uri
+
+    def changed(path, expected_bytes):
+        with path.open("ab") as handle:
+            handle.write(b"changed")
+        return original(path, expected_bytes)
+
+    monkeypatch.setattr(report, "_data_uri", changed)
+    target = tmp_path / "output.html"
+    target.write_bytes(b"previous report")
+    with pytest.raises(ValueError, match="mudou de tamanho"):
+        write_report([sessao(itens=[clip])], target)
+    assert target.read_bytes() == b"previous report"
+
+
+@pytest.mark.parametrize(
+    "script, arguments", [("watch_video.py", ["missing.mp4"]), ("build_report.py", [])]
+)
+@pytest.mark.parametrize("limit", ["0", "-1"])
+def test_comandos_validam_orcamento_antes_de_ler_video_ou_dataset(script, arguments, limit):
+    path = Path(__file__).resolve().parents[1] / "scripts" / script
+    result = subprocess.run(
+        [sys.executable, str(path), *arguments, "--report-max-bytes", limit],
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode == 2
+    assert "positivo" in result.stderr.decode(errors="replace")
