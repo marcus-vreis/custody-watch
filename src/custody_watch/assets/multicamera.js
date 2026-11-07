@@ -176,7 +176,9 @@
       config = await response.json();
       $("site").textContent = `${config.site_id} · Referenciais locais, sem identidade global`;
       for (const floor of config.floors) { const option = make("option", floor.floor_id); option.value = floor.floor_id; $("floor").append(option); }
-      selected = config.cameras.find(c => c.floor_id === $("floor").value)?.camera_id || null;
+      const target = replayTarget(window.location.search, config);
+      $("floor").value = target.floor_id;
+      selected = target.camera_id;
       $("timeline").min = String(config.timeline.start_s); $("timeline").max = String(config.timeline.end_s); $("timeline").step = String(config.timeline.step_s);
       $("extent").textContent = `${seconds(config.timeline.start_s)} — ${seconds(config.timeline.end_s)} · segundos relativos`;
       $("timeline").addEventListener("input", event => { stop(); void seek(Number(event.target.value)); });
@@ -185,7 +187,7 @@
       $("speed").addEventListener("change", () => { if (timer) { stop(); start(); } });
       $("floor").addEventListener("change", () => { selected = config.cameras.find(c => c.floor_id === $("floor").value)?.camera_id || null; render(); });
       $("history").addEventListener("change", renderMap);
-      await seek(Math.max(config.timeline.start_s, Math.min(0, config.timeline.end_s)));
+      await seek(target.t);
     } catch (error) { $("error").textContent = "Não foi possível carregar o laboratório. Verifique o servidor local."; $("error").hidden = false; }
   }
   void init();

@@ -16,6 +16,7 @@ ASSETS = {
     "/": ("multicamera.html", "text/html; charset=utf-8"),
     "/assets/multicamera.css": ("multicamera.css", "text/css; charset=utf-8"),
     "/assets/multicamera.js": ("multicamera.js", "text/javascript; charset=utf-8"),
+    "/assets/replay_link.js": ("replay_link.js", "text/javascript; charset=utf-8"),
 }
 
 

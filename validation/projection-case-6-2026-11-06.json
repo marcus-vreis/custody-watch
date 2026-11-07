@@ -1,0 +1,46 @@
+{
+  "camera_id": "Camera_0019",
+  "source_frame": 75,
+  "sample_frame_index": 5,
+  "replay_t_s": 2.5,
+  "roi_xyxy": [
+    1560,
+    230,
+    1770,
+    460
+  ],
+  "zoom_scale": 3,
+  "target_annotation_id": 6,
+  "foreground_annotation_id": 24,
+  "target_bbox_visible": [
+    1681,
+    262,
+    1698,
+    271
+  ],
+  "foreground_bbox_visible": [
+    1583,
+    268,
+    1738,
+    834
+  ],
+  "runtime_errors": [
+    {
+      "camera_id": "Camera_0019",
+      "source_frame": 75,
+      "annotation_id": 24,
+      "error_m": 0.13233674132439888,
+      "bbox_at_boundary": false
+    },
+    {
+      "camera_id": "Camera_0019",
+      "source_frame": 75,
+      "annotation_id": 6,
+      "error_m": 98.51334661756513,
+      "bbox_at_boundary": false
+    }
+  ],
+  "source": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces",
+  "license": "CC BY 4.0",
+  "mode": "oracle"
+}
