@@ -23,6 +23,7 @@ arbitrária para valer.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -138,6 +139,8 @@ def load_calibration(path: Path | str) -> Calibration:
         )
 
     data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: esperado objeto JSON de calibração")
 
     camera = str(data.get("camera", "")).strip()
     if not camera:
@@ -151,14 +154,35 @@ def load_calibration(path: Path | str) -> Calibration:
         )
 
     correspondencias = data.get("correspondences", [])
+    if not isinstance(correspondencias, list):
+        raise ValueError(f"{path}: correspondences deve ser lista de pontos medidos")
     if len(correspondencias) < 4:
         raise ValueError(f"{path}: homografia exige ao menos 4 correspondências")
 
-    pixels = [(float(c["pixel"][0]), float(c["pixel"][1])) for c in correspondencias]
-    mundo = [Point(float(c["world"][0]), float(c["world"][1])) for c in correspondencias]
+    pixels, mundo = [], []
+    for index, sample in enumerate(correspondencias):
+        if not isinstance(sample, dict):
+            raise ValueError(f"{path}: correspondences[{index}] deve ser objeto JSON")
+        pair = {}
+        for field in ("pixel", "world"):
+            label = f"{path}: correspondences[{index}].{field}"
+            coordinates = sample.get(field)
+            if not isinstance(coordinates, list) or len(coordinates) != 2:
+                raise ValueError(f"{label}: esperado par de coordenadas")
+            try:
+                finite = all(type(v) in (int, float) and math.isfinite(v) for v in coordinates)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ValueError(f"{label}: coordenadas devem ser números finitos")
+            pair[field] = tuple(float(v) for v in coordinates)
+        pixels.append(pair["pixel"])
+        mundo.append(Point(*pair["world"]))
 
     plane = GroundPlane.from_correspondences(pixels, [(p.x, p.y) for p in mundo])
     erros = reprojection_errors(plane, pixels, mundo)
+    if not all(math.isfinite(error) for error in erros):
+        raise ValueError(f"{path}: resíduo de reprojeção deve ser finito")
     media = sum(erros) / len(erros)
     pior = max(erros)
 
