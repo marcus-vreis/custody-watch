@@ -102,6 +102,50 @@ IDs de outros quadros não são oferecidos como presentes na imagem congelada.
 Falha no carregamento desabilita a anotação. A projeção exibida é a da bbox,
 diagnóstica; não representa avaliação do contato contra um gabarito.
 
+### Preparar uma fila de revisão
+
+```powershell
+.venv\Scripts\python.exe scripts/prepare_contact_review.py <registry.json> `
+  --seed 20261107 --frames-per-camera 6 --min-gap-s 1 --output <fila-nova.json>
+```
+
+A pasta de saída deve existir; o arquivo deve ser novo. A seleção versionada
+`sha256_rank_greedy_gap_v1` ordena candidatos pelo SHA-256 da lista JSON compacta
+UTF-8 `[seed, registry_sha256, camera_id, segment_id, sequence_sha256, frame_index]`,
+aceita cada candidato se respeita o intervalo para os já escolhidos e para ao
+atingir a cota. O resultado é ordenado por câmera e tempo. A cota é um teto:
+o algoritmo guloso não maximiza a quantidade nem relaxa o intervalo por falta
+de quadros. Seed e parâmetros ficam registrados; não há seleção manual por erro.
+
+Somente quadros observados com pessoas em vídeos locais verificados no
+carregamento entram na fila. Esquemas/fontes indisponíveis são listados como
+exclusões; quadros vazios, ausentes ou só com bagagens não são candidatos.
+A fila contém hashes, tempos e IDs locais; não contém pontos, rótulos de contato,
+posições de referência, revisão humana ou métricas. Índices/IDs incompatíveis
+com inteiros exatos do painel são recusados. Não decodifica vídeo nem confirma
+visibilidade de pés. Uma falha de escrita pode deixar arquivo parcial; o comando
+recusa substituí-lo numa nova execução.
+
+Não há importação automática da fila no painel. Use `camera_id` e `global_t`
+para navegar no replay e confira os hashes no **Vínculo do quadro** antes de
+anotar. O intervalo vale por câmera; vistas diferentes e IDs no mesmo quadro
+continuam correlacionados. O limite de 1000 anotações por página continua válido,
+independentemente da quantidade de quadros selecionados.
+
+Filas de conveniência de 2026-11-07, um run por recorte oracle local, seed
+20261107, até seis quadros por câmera e intervalo mínimo de um segundo:
+
+| Fila | Quadros candidatos | Quadros selecionados | Pares (quadro, ID local) selecionados |
+| --- | ---: | ---: | ---: |
+| [NVIDIA](validation/contact-review-queue-nvidia-2026-11-07.json) | 14 | 7 | 62 |
+| [WILDTRACK](validation/contact-review-queue-wildtrack-2026-11-07.json) | 14 | 7 | 208 |
+
+As contagens vêm dos arquivos vinculados; pares não são pessoas únicas ou
+amostras independentes. Essas filas organizam trabalho futuro. Não constituem
+split de treino/teste ou amostra representativa, não definem o alvo físico e
+não substituem protocolo e revisão humana independente da #88. IDs/caixas
+continuam vindos do gabarito; a fila não valida detector nem associação.
+
 ## Executar a avaliação offline
 
 ```powershell
