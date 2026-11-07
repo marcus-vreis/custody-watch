@@ -34,7 +34,7 @@ local está disponível, preservando as checagens de integridade da fonte. Em
 fonte offline ou sintética, identifica explicitamente o domínio como não
 verificado em vídeo. Não certifica visibilidade/precisão só por validar o JSON.
 
-`scripts/evaluate_ground_contacts.py` produzirá contagens de cobertura,
+`scripts/evaluate_ground_contacts.py` produz contagens de cobertura,
 abstenções e projeções dos pontos declarados, com hashes e proveniência. A
 projeção da bbox é mantida separada. Não modifica caches, custódia ou replay;
 `position_m` permanece nulo e `association_eligible` falso.
@@ -43,3 +43,25 @@ Referências de posição do gabarito servem exclusivamente à comparação orac
 em resultados separados e rotulados. Não fornecem `status` de contato, confiança
 de produção ou revisão humana. Sem medição independente e política explícita,
 uma declaração de contato não libera posição para associação.
+
+## Executar a avaliação offline
+
+```powershell
+.venv\Scripts\python.exe scripts/evaluate_ground_contacts.py `
+  tests/fixtures/multicamera/two-cameras/registry.json `
+  tests/fixtures/multicamera/two-cameras/ground-contacts.json `
+  --output outputs/contact-fixture-novo
+```
+
+O destino precisa ser novo. `summary.json` identifica os hashes, as câmeras e
+as contagens; `observations.jsonl` conserva cada observação em ordem global.
+Contagem de rótulos inclui declarações explícitas desconhecidas; ausência
+permanece contabilizada separadamente. Abstenção de projeção significa não
+ter ponto projetável; abstenção de associação cobre todas as observações.
+
+O avaliador é offline e mantém a saída das observações em RAM. Não oferece
+retenção limitada para operação contínua. A fonte local precisa estar íntegra;
+uma alteração de arquivo não é rebaixada silenciosamente a vídeo offline.
+Dimensões conferidas não comprovam visibilidade, precisão da calibração ou
+correção da declaração. Erro de validação/projeção ocorre antes de publicar o
+diretório; falhas posteriores de escrita podem deixar saída parcial e são erro.
