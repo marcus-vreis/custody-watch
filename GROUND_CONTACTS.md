@@ -62,6 +62,19 @@ de trocar cadastro/sequência. URLs antigos sem o par continuam disponíveis par
 compatibilidade de inspeção; a revisão/exportação requer o vínculo completo.
 Os hashes não qualificam contato, calibração ou confiança de produção.
 
+O núcleo de rascunhos (`assets/contact_review.js`) seleciona IDs somente desse
+catálogo congelado e converte cliques pelo retângulo renderizado da imagem,
+incluindo zoom e rolagem. Não arredonda/clampa pontos fora do domínio. O arquivo
+exportado contém apenas os campos do contrato v1 e é aceito pelo mesmo leitor
+Python, em testes de interoperabilidade executados com Node.js.
+
+Guardar duplicatas exige remoção explícita da anotação anterior no rascunho.
+Ambientes, segmentos, sequências e dimensões incompatíveis não são misturados.
+O limite por página é de até 1000 anotações; exportar não apaga esse rascunho.
+Origem e método são escolhas explícitas, sem herdar `ground_truth` do cache.
+`human_review` requer declaração de revisão pessoal; isso é uma declaração do
+operador, não autenticação de autoria ou certificação automática de confiança.
+
 ## Executar a avaliação offline
 
 ```powershell
