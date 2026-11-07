@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/assets/multicamera.css">
   <script src="/assets/replay_link.js" defer></script>
   <script src="/assets/map_positions.js" defer></script>
+  <script src="/assets/camera_inspector.js" defer></script>
   <script src="/assets/multicamera.js" defer></script>
 </head>
 <body>
@@ -48,6 +49,20 @@
         <label class="speed-label" for="speed">Velocidade <select id="speed"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label></div>
         <span class="time-extent" id="extent"></span></div>
     </section>
+    <dialog id="inspector" aria-labelledby="inspection-title">
+      <div class="inspection-heading"><div><h2 id="inspection-title">Inspeção de câmera</h2><p id="inspection-origin"></p></div>
+        <button id="inspection-close" class="secondary" type="button">Fechar inspeção</button></div>
+      <p id="inspection-clock"></p>
+      <p class="inspection-warning">Quadro congelado · replay pausado. IDs locais; posição no chão não qualificada.</p>
+      <div class="inspection-controls"><button id="inspection-out" class="secondary" type="button" aria-label="Reduzir zoom">−</button>
+        <output id="inspection-zoom" aria-live="polite">100%</output>
+        <button id="inspection-in" class="secondary" type="button" aria-label="Ampliar zoom">+</button>
+        <button id="inspection-fit" class="secondary" type="button">Ajustar à largura</button>
+        <span id="inspection-resolution"></span></div>
+      <div id="inspection-viewport" class="inspection-viewport" tabindex="0" aria-label="Imagem ampliada; use as barras ou as setas para rolar">
+        <p id="inspection-loading" role="status">Carregando quadro…</p><div id="inspection-image"></div></div>
+      <p class="map-note">Resolução do arquivo local, com caixas e IDs anotados. Zoom digital não recupera detalhes ausentes; esquema sintético não é vídeo.</p>
+    </dialog>
     <footer>Laboratório de observações · associação entre câmeras e transferência de custódia ainda não implementadas.</footer>
   </main>
 </body>

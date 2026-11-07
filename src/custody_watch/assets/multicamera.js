@@ -6,6 +6,7 @@
   const labels = {not_started: "Não iniciada", observed: "Quadro disponível", missing: "Quadro ausente", stale: "Sem quadro recente", completed: "Gravação concluída", unavailable: "Sem observações"};
   const seconds = value => `${Number(value).toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2})} s`;
   let config, state, selected = null, cursor = 0, generation = 0, controller, timer;
+  let inspectionScale = 1, inspectionGeneration = 0, inspectionReturnId;
   const make = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -100,7 +101,12 @@
     choose.append(make("span", undefined, "camera-symbol"), make("span", camera.camera_id));
     choose.addEventListener("click", () => { selected = camera.camera_id; render(); });
     const status = make("span", labels[snapshot.status], `status ${snapshot.status}`);
-    head.append(choose, status);
+    const inspect = make("button", "Ampliar", "secondary inspect-camera");
+    inspect.type = "button"; inspect.id = `inspect-camera-${index}`;
+    inspect.setAttribute("aria-label", `Ampliar ${camera.camera_id}`);
+    inspect.disabled = !snapshot.image;
+    inspect.addEventListener("click", () => openInspection(camera, snapshot, inspect.id));
+    head.append(choose, inspect, status);
     const holder = make("div", undefined, "camera-image"), placeholder = make("span", "Sem imagem neste instante", "placeholder");
     holder.append(placeholder);
     if (snapshot.image) {
@@ -147,6 +153,49 @@
   function stop() {
     if (timer) clearInterval(timer);
     timer = undefined; $("play").textContent = "Reproduzir";
+  }
+  function zoomInspection(delta) {
+    inspectionScale = inspectionZoom(inspectionScale, delta);
+    const image = $("inspection-image").querySelector("img");
+    if (image) image.style.width = `${inspectionScale * 100}%`;
+    $("inspection-zoom").textContent = `${Math.round(inspectionScale * 100)}%`;
+    $("inspection-out").disabled = inspectionScale <= 1;
+    $("inspection-in").disabled = inspectionScale >= 4;
+  }
+  function openInspection(camera, snapshot, returnId) {
+    const target = inspectionTarget(camera, snapshot);
+    if (!target) return;
+    stop();
+    if (controller) controller.abort();
+    ++generation; cursor = state.t; $("timeline").value = String(cursor);
+    $("loading").textContent = ""; $("workspace").setAttribute("aria-busy", "false");
+    render();
+    inspectionReturnId = returnId;
+    const ticket = ++inspectionGeneration, dialog = $("inspector");
+    $("inspection-title").textContent = `${target.camera_id} · quadro ${target.frame_index}`;
+    const origin = target.mode === "oracle" ? "ORACLE / GABARITO" : target.provenance === "synthetic" ? "SINTÉTICO" : "PREDIÇÕES DO DETECTOR";
+    $("inspection-origin").textContent = `${origin} · segmento ${target.segment_id}`;
+    $("inspection-clock").textContent = `${target.historical ? "HISTÓRICO" : "QUADRO OBSERVADO"} · imagem ${seconds(target.t)} · mídia ${seconds(target.media_t)} · idade ao abrir ${seconds(target.age_s)}`;
+    $("inspection-loading").textContent = "Carregando quadro…";
+    $("inspection-loading").hidden = false;
+    $("inspection-resolution").textContent = "";
+    const image = new Image();
+    image.alt = `${target.camera_id} · ${target.segment_id} · quadro ${target.frame_index}`;
+    image.hidden = true;
+    image.onload = () => {
+      if (!dialog.open || ticket !== inspectionGeneration) return;
+      image.hidden = false; $("inspection-loading").hidden = true;
+      $("inspection-resolution").textContent = target.kind === "schematic" ? "Esquema sintético vetorial · sem vídeo" : `${image.naturalWidth} × ${image.naturalHeight} px · arquivo local`;
+    };
+    image.onerror = () => {
+      if (!dialog.open || ticket !== inspectionGeneration) return;
+      $("inspection-loading").textContent = "Imagem indisponível. Feche e tente novamente; o quadro não foi substituído.";
+    };
+    $("inspection-image").replaceChildren(image);
+    inspectionScale = 1; zoomInspection(0);
+    $("inspection-viewport").scrollTop = 0; $("inspection-viewport").scrollLeft = 0;
+    dialog.showModal();
+    image.src = target.url;
   }
   async function seek(t) {
     cursor = Math.max(config.timeline.start_s, Math.min(config.timeline.end_s, t));
@@ -197,6 +246,15 @@
       $("floor").addEventListener("change", () => { selected = config.cameras.find(c => c.floor_id === $("floor").value)?.camera_id || null; render(); });
       $("history").addEventListener("change", renderMap);
       $("diagnostics").addEventListener("change", renderMap);
+      $("inspection-close").addEventListener("click", () => $("inspector").close());
+      $("inspector").addEventListener("close", () => {
+        ++inspectionGeneration;
+        $("inspection-image").replaceChildren();
+        document.getElementById(inspectionReturnId)?.focus();
+      });
+      $("inspection-in").addEventListener("click", () => zoomInspection(.5));
+      $("inspection-out").addEventListener("click", () => zoomInspection(-.5));
+      $("inspection-fit").addEventListener("click", () => { inspectionScale = 1; zoomInspection(0); $("inspection-viewport").scrollTop = 0; $("inspection-viewport").scrollLeft = 0; });
       await seek(target.t);
     } catch (error) { $("error").textContent = "Não foi possível carregar o laboratório. Verifique o servidor local."; $("error").hidden = false; }
   }

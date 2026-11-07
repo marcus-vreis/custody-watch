@@ -18,6 +18,7 @@ ASSETS = {
     "/assets/multicamera.js": ("multicamera.js", "text/javascript; charset=utf-8"),
     "/assets/replay_link.js": ("replay_link.js", "text/javascript; charset=utf-8"),
     "/assets/map_positions.js": ("map_positions.js", "text/javascript; charset=utf-8"),
+    "/assets/camera_inspector.js": ("camera_inspector.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -79,9 +80,15 @@ class _Handler(BaseHTTPRequestHandler):
                 fields = _query(route.query, {"t"})
                 self._json(200, self.server.view.snapshot(float(fields["t"])))
             elif route.path == "/api/image":
-                fields = _query(route.query, {"camera_id", "segment_id", "frame_index"})
+                expected = {"camera_id", "segment_id", "frame_index"}
+                if "resolution" in parse_qs(route.query, keep_blank_values=True):
+                    expected.add("resolution")
+                fields = _query(route.query, expected)
                 image = self.server.images.get(
-                    fields["camera_id"], fields["segment_id"], int(fields["frame_index"])
+                    fields["camera_id"],
+                    fields["segment_id"],
+                    int(fields["frame_index"]),
+                    resolution=fields.get("resolution", "preview"),
                 )
                 self._send(200, image.content_type, image.data)
             else:
