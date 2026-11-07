@@ -2,7 +2,7 @@
 
 Detecting **luggage custody changes** in airport surveillance video — not faces, not "suspicious people".
 
-> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 734 passed, 1 skipped (external CAVIAR footage unavailable).
+> **Status:** runs end to end, from an `.mp4` to a ranked review page for a human operator. Local CPU verification on Windows (2026-11-06): 791 passed, 1 skipped (external CAVIAR footage unavailable).
 >
 > **On a generated theft, it found the thief.** A 40-second gate-area theft made with Veo: the thief is the only top-severity item in the queue, with the right bag and the right owner group. See [The first footage that is not a dataset](#the-first-footage-that-is-not-a-dataset).
 >
@@ -46,6 +46,21 @@ Four principles carry the design:
 4. **Flags are relational, never attributive.** "Approached bags from three different groups in eight minutes" is evidence. "Carries no luggage" is profiling — it fires on 20-30% of an airport and systematically marks airport workers.
 
 ## Running it
+
+The web panel currently handles one source. An offline camera registry and
+synchronized prediction replay now provide the first part of a virtual
+multi-camera lab, without weights, video downloads or a GPU:
+
+```powershell
+.venv\Scripts\python.exe scripts/replay_multicamera.py tests/fixtures/multicamera/two-cameras/registry.json --output outputs/multicamera-demo
+```
+
+Use a new output directory. The example exports `summary.json` and
+`frames.jsonl` from synthetic observations, with camera/segment-qualified IDs
+and explicit timing uncertainty. It does not play videos or associate people
+between cameras. A mosaic, floor-plan UI and cross-camera custody remain planned.
+See the [multi-camera contract and roadmap](MULTICAMERA.md) for data sources,
+coordinate conventions and incremental acceptance criteria.
 
 No system Python needed; `uv` provides one.
 

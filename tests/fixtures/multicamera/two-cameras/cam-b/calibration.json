@@ -1,0 +1,46 @@
+{
+  "camera": "cam-b",
+  "note": "Geometria sintética exata; não é medição física.",
+  "correspondences": [
+    {
+      "pixel": [
+        100,
+        0
+      ],
+      "world": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pixel": [
+        900,
+        0
+      ],
+      "world": [
+        8.0,
+        0.0
+      ]
+    },
+    {
+      "pixel": [
+        100,
+        600
+      ],
+      "world": [
+        0.0,
+        6.0
+      ]
+    },
+    {
+      "pixel": [
+        900,
+        600
+      ],
+      "world": [
+        8.0,
+        6.0
+      ]
+    }
+  ]
+}

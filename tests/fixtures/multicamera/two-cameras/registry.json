@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "site_id": "synthetic-hall",
+  "floors": [
+    {
+      "floor_id": "terreo",
+      "coordinate_frame": {
+        "frame_id": "hall-m",
+        "unit": "m",
+        "origin": "Canto sudoeste do hall sintético",
+        "x_axis": "Leste",
+        "y_axis": "Norte"
+      }
+    }
+  ],
+  "cameras": [
+    {
+      "camera_id": "cam-a",
+      "floor_id": "terreo",
+      "segment_id": "segment-1",
+      "position_m": [
+        -1,
+        0
+      ],
+      "coverage_m": [
+        [
+          0,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          0,
+          6
+        ]
+      ],
+      "projection_frame_id": "hall-m",
+      "recording": {
+        "path": "cam-a/manifest.json",
+        "size_bytes": 1626,
+        "sha256": "460cd832333aabc946079c175d246d0a7f8e19a44b2f30198ed9f8b404a93204"
+      },
+      "clock": {
+        "offset_s": 0,
+        "uncertainty_s": 0,
+        "method": "Offsets sintéticos declarados; sem sincronização automática."
+      }
+    },
+    {
+      "camera_id": "cam-b",
+      "floor_id": "terreo",
+      "segment_id": "segment-1",
+      "position_m": [
+        9,
+        0
+      ],
+      "coverage_m": [
+        [
+          0,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          0,
+          6
+        ]
+      ],
+      "projection_frame_id": "hall-m",
+      "recording": {
+        "path": "cam-b/manifest.json",
+        "size_bytes": 1626,
+        "sha256": "5ba45dc19c3a67ef8a57054f93b08d550084a48a3d24c48ad34d9cf22f1a0dfe"
+      },
+      "clock": {
+        "offset_s": -1,
+        "uncertainty_s": 0.05,
+        "method": "Offsets sintéticos declarados; sem sincronização automática."
+      }
+    }
+  ]
+}
