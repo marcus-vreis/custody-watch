@@ -20,6 +20,7 @@ def test_config_descreve_cameras_planta_e_origem_sem_expor_caminhos(tmp_path):
     config = view.config()
 
     assert config["site_id"] == "synthetic-hall"
+    assert config["position_method"] == "bbox_bottom_on_ground_plane"
     assert config["timeline"] == {"start_s": -1, "end_s": 4, "step_s": 0.05}
     assert config["floors"][0]["coordinate_frame"]["unit"] == "m"
     assert config["cameras"][0]["position_m"] == [-1, 0]

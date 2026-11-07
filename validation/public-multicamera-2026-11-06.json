@@ -1,0 +1,522 @@
+{
+  "date": "2026-11-06",
+  "scope": "exploratory oracle import, video replay and bbox-foot projection",
+  "environment": {
+    "python": "3.13.16",
+    "numpy": "2.5.2",
+    "opencv": "5.0.0",
+    "gpu_used": false
+  },
+  "core_source_hashes": {
+    "public_multicamera.py": "9e9071f3d1f898bf191a19a88ad7601a05b273861f3660f8b1c16f68d58eaace",
+    "ground_plane.py": "015b272305289f20fc32e48c6e95a6538526bb9bceb4fffb75ff048070e5ae10",
+    "calibration.py": "66558a363ba38934941ee032d3e618c7099e07f9cfd12ca20da83ac98187e2e5",
+    "recorded_predictions.py": "6ba7a6064f498395933a44f99cee9eeda2fcaf6e1ab6252a96e79d286bd7f6b9",
+    "multicamera_view.py": "a5bdcba2591d66f75e57af8c3e0f9a4a7bdb97dc77d0d50e56ad387f3d3fa3cf"
+  },
+  "datasets": {
+    "nvidia": {
+      "dataset": "nvidia",
+      "source_revision": "d38193be60906679124732a4be9a6516821e2bed",
+      "importer_sha256": "9e9071f3d1f898bf191a19a88ad7601a05b273861f3660f8b1c16f68d58eaace",
+      "code_revision": "83d653d38cff8dd9d8e2b3702a886cb9da7d62c1+dirty",
+      "runs": 1,
+      "selection": "Quadros e câmeras explícitos; recorte de conveniência, não aleatório.",
+      "mode": "oracle",
+      "integration_status": "passed",
+      "frames_per_camera": 7,
+      "source_frame_ids": [
+        0,
+        15,
+        30,
+        45,
+        60,
+        75,
+        90
+      ],
+      "source_fps": 30.0,
+      "sample_fps": 2.0,
+      "cameras": [
+        {
+          "camera_id": "Camera_0008",
+          "observations": 35,
+          "bbox_foot_to_world_annotation": {
+            "count": 35,
+            "median_m": 0.10692256707169176,
+            "p95_m": 18.672088596547457,
+            "max_m": 18.677045511398617
+          },
+          "bbox_foot_to_world_annotation_unclipped": {
+            "count": 28,
+            "median_m": 0.18448819004726918,
+            "p95_m": 18.67240654000832,
+            "max_m": 18.677045511398617
+          }
+        },
+        {
+          "camera_id": "Camera_0019",
+          "observations": 97,
+          "bbox_foot_to_world_annotation": {
+            "count": 97,
+            "median_m": 0.19675663194154777,
+            "p95_m": 11.503227314049488,
+            "max_m": 98.51334661756513
+          },
+          "bbox_foot_to_world_annotation_unclipped": {
+            "count": 91,
+            "median_m": 0.193469967922582,
+            "p95_m": 11.507062383435176,
+            "max_m": 98.51334661756513
+          }
+        }
+      ],
+      "detector_validated": false,
+      "identity_association_validated": false,
+      "custody_validated": false,
+      "physical_calibration_accuracy_validated": false,
+      "limitations": [
+        "Somente pessoas anotadas; nenhuma anotação de posse/bagagem importada.",
+        "Desvio entre base da bbox e posição anotada mistura convenções/oclusão e calibração; não é erro puro da calibração.",
+        "Correspondências da calibração foram geradas algebricamente, não medidas no ambiente.",
+        "Recorte pequeno em oracle; não mede detecção, tracking aprendido ou redução de furtos."
+      ],
+      "inputs": [
+        {
+          "path": "calibration.json",
+          "size_bytes": 81410,
+          "sha256": "902fa1eddab484062c256373f567febd36f8365f34f89367fc1f4b8fdddf4e9a"
+        },
+        {
+          "path": "Camera_0008.mp4",
+          "size_bytes": 91296832,
+          "sha256": "408091e18298ba6a03d3cca4bef365261159858422447ed476f033da54d2e2b0"
+        },
+        {
+          "path": "Camera_0019.mp4",
+          "size_bytes": 113111267,
+          "sha256": "4b2967a53fa3757edf519c2a8f25e1fb5c9f3905ebc61da135c2c851b54aec08"
+        },
+        {
+          "path": "ground_truth.prefix.json.part",
+          "size_bytes": 8000000,
+          "sha256": "cf7f36c976d9053ecfe3d62c680bdbf34b577cad389b46ee0d2f22665ca713f7"
+        }
+      ],
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces",
+      "source_scene_type": "synthetic",
+      "temporal_span_s": 3,
+      "source_time_error_bound_s": null,
+      "browser_validation": "mosaic/images/map loaded; oracle labels and unknown sync precision visible; playback reached 3.5s and stopped with images at 3s marked historical",
+      "geometry_assumption": "counterexample_found",
+      "shared_annotation_ids_per_sample_frame": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "shared_ids_are_inherited_ground_truth_not_tracking_results": true,
+      "acquisition": [
+        {
+          "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/resolve/d38193be60906679124732a4be9a6516821e2bed/MTMC_Tracking_2025/train/Warehouse_000/calibration.json",
+          "downloaded_bytes": 81410,
+          "sha256": "902fa1eddab484062c256373f567febd36f8365f34f89367fc1f4b8fdddf4e9a",
+          "complete": true,
+          "publisher_full_size": 81410,
+          "publisher_full_sha256": "902fa1eddab484062c256373f567febd36f8365f34f89367fc1f4b8fdddf4e9a"
+        },
+        {
+          "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/resolve/d38193be60906679124732a4be9a6516821e2bed/MTMC_Tracking_2025/train/Warehouse_000/ground_truth.json",
+          "downloaded_bytes": 8000000,
+          "sha256": "cf7f36c976d9053ecfe3d62c680bdbf34b577cad389b46ee0d2f22665ca713f7",
+          "complete": false,
+          "publisher_full_size": 328285276,
+          "publisher_full_sha256": "8610b671308c8b7f1a2ea5ccbaec5d157c9e325589f6b420f8cac5498ff524bc"
+        },
+        {
+          "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/resolve/d38193be60906679124732a4be9a6516821e2bed/MTMC_Tracking_2025/train/Warehouse_000/map.png",
+          "downloaded_bytes": 515978,
+          "sha256": "667ea587150032763da77755a3b691ceb6afb77f9eff42135132d43502a128ce",
+          "complete": true,
+          "publisher_full_size": 515978,
+          "publisher_full_sha256": "667ea587150032763da77755a3b691ceb6afb77f9eff42135132d43502a128ce"
+        }
+      ],
+      "video_acquisition": [
+        {
+          "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/resolve/d38193be60906679124732a4be9a6516821e2bed/MTMC_Tracking_2025/train/Warehouse_000/videos/Camera_0008.mp4",
+          "size_bytes": 91296832,
+          "sha256": "408091e18298ba6a03d3cca4bef365261159858422447ed476f033da54d2e2b0",
+          "complete": true
+        },
+        {
+          "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/resolve/d38193be60906679124732a4be9a6516821e2bed/MTMC_Tracking_2025/train/Warehouse_000/videos/Camera_0019.mp4",
+          "size_bytes": 113111267,
+          "sha256": "4b2967a53fa3757edf519c2a8f25e1fb5c9f3905ebc61da135c2c851b54aec08",
+          "complete": true
+        }
+      ],
+      "full_ground_truth_hash_verified": false,
+      "selection_reason": "Least total video bytes among pairs with >=3 shared Person IDs at frame 0; exploratory selection using GT.",
+      "diagnostic": {
+        "camera_id": "Camera_0019",
+        "source_frame": 75,
+        "annotation_id": 6,
+        "bbox_visible": [
+          1681,
+          262,
+          1698,
+          271
+        ],
+        "bbox_bottom_px": [
+          1689.5,
+          271.0
+        ],
+        "world_annotation_m": [
+          -16.671279114603063,
+          -10.589689618725917,
+          0.8751952210441232
+        ],
+        "projected_bbox_bottom_world_m": [
+          -111.70820308792196,
+          -36.529506983266444
+        ],
+        "annotated_ground_xy_projected_to_image_px": [
+          1679.1508133893585,
+          405.4367279324905
+        ],
+        "ground_point_inside_visible_bbox": false,
+        "z_min_axis_aligned_m": 0.0023206789046525955,
+        "error_m": 98.51340539853504,
+        "interpretation": "A base da caixa visível não coincide com o contato anotado no chão. Inspeção visual indica oclusão; não é um teste de detector.",
+        "source": "https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces",
+        "license": "CC BY 4.0",
+        "projection_method": "inverse of publisher homography; runtime metric uses fitted algebraic correspondences"
+      }
+    },
+    "wildtrack": {
+      "dataset": "wildtrack",
+      "source_revision": "5b86d551-195c226a6",
+      "importer_sha256": "9e9071f3d1f898bf191a19a88ad7601a05b273861f3660f8b1c16f68d58eaace",
+      "code_revision": "83d653d38cff8dd9d8e2b3702a886cb9da7d62c1+dirty",
+      "runs": 1,
+      "selection": "Quadros e câmeras explícitos; recorte de conveniência, não aleatório.",
+      "mode": "oracle",
+      "integration_status": "passed",
+      "frames_per_camera": 7,
+      "source_frame_ids": [
+        0,
+        5,
+        10,
+        15,
+        20,
+        25,
+        30
+      ],
+      "source_fps": 10,
+      "sample_fps": 2.0,
+      "cameras": [
+        {
+          "camera_id": "C1",
+          "observations": 232,
+          "bbox_foot_to_world_annotation": {
+            "count": 232,
+            "median_m": 0.10730480212621898,
+            "p95_m": 0.18334796321541963,
+            "max_m": 0.2176012293684135
+          },
+          "bbox_foot_to_world_annotation_unclipped": {
+            "count": 222,
+            "median_m": 0.1076785235149384,
+            "p95_m": 0.18334796321541963,
+            "max_m": 0.2176012293684135
+          }
+        },
+        {
+          "camera_id": "C2",
+          "observations": 190,
+          "bbox_foot_to_world_annotation": {
+            "count": 190,
+            "median_m": 0.07817856206013243,
+            "p95_m": 0.2350623771924783,
+            "max_m": 0.2965927344395329
+          },
+          "bbox_foot_to_world_annotation_unclipped": {
+            "count": 124,
+            "median_m": 0.05764100211261643,
+            "p95_m": 0.10294165444826048,
+            "max_m": 0.11568741105816274
+          }
+        }
+      ],
+      "detector_validated": false,
+      "identity_association_validated": false,
+      "custody_validated": false,
+      "physical_calibration_accuracy_validated": false,
+      "limitations": [
+        "Somente pessoas anotadas; nenhuma anotação de posse/bagagem importada.",
+        "Desvio entre base da bbox e posição anotada mistura convenções/oclusão e calibração; não é erro puro da calibração.",
+        "Correspondências da calibração foram geradas algebricamente, não medidas no ambiente.",
+        "Recorte pequeno em oracle; não mede detecção, tracking aprendido ou redução de furtos."
+      ],
+      "inputs": [
+        {
+          "path": "annotations_positions\\00000000.json",
+          "size_bytes": 49547,
+          "sha256": "0886efdd049eb03ab7f2f51f43f583ada15480f9156615ea92a7b8a015cacc93"
+        },
+        {
+          "path": "annotations_positions\\00000005.json",
+          "size_bytes": 46918,
+          "sha256": "8c77a7649ba4080f6387daf073d1f6bed68ed50dfa7df1b8223ca0a7fca12010"
+        },
+        {
+          "path": "annotations_positions\\00000010.json",
+          "size_bytes": 44322,
+          "sha256": "abb2f0fa6d4e0146fef43fc9f545aca7861a56d11e1641c57d82205c87ea96e7"
+        },
+        {
+          "path": "annotations_positions\\00000015.json",
+          "size_bytes": 46940,
+          "sha256": "cc51423a33dccb72fb4beee78e5db586423dfc266240604065a3cb145006cab2"
+        },
+        {
+          "path": "annotations_positions\\00000020.json",
+          "size_bytes": 46942,
+          "sha256": "6011da3f127274c6f1a15be44d3a8253391355481dbf18d8f510c93875b7c025"
+        },
+        {
+          "path": "annotations_positions\\00000025.json",
+          "size_bytes": 50862,
+          "sha256": "dfa479dcff29f22f0e3af0278de2ee5495c6d6469212be87c1b88e920b8078d8"
+        },
+        {
+          "path": "annotations_positions\\00000030.json",
+          "size_bytes": 49538,
+          "sha256": "e9e1782b931effee7be739dca25ca2588a4ac28ec87d0e3c95236d079a2235e7"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_CVLab1.xml",
+          "size_bytes": 217,
+          "sha256": "3be5888fc3af27e75eb38cf78ec7d968c6fe20d94558e119604ed8275717a87b"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_CVLab2.xml",
+          "size_bytes": 215,
+          "sha256": "6c30c7ec9873a47afcb614a803fb7379816cd841113513c4643f569b72953db7"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_CVLab3.xml",
+          "size_bytes": 214,
+          "sha256": "57407028939ca6d21cfe5231c581499832c40f13a3bcbf177dbb638556d901ee"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_CVLab4.xml",
+          "size_bytes": 220,
+          "sha256": "341de892b98c81dd191b6765a04dea4cef050529a8ee0b2dcba5a66e7b7dcbf4"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_IDIAP1.xml",
+          "size_bytes": 214,
+          "sha256": "b5706335191bb34b9ac8d896a4a11bc97f692578224dece9972bd7ad5a4bc651"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_IDIAP2.xml",
+          "size_bytes": 217,
+          "sha256": "59c06b01516e52957cf9a1be5f30b016a2ab0e1c9b76341c603bef8ff2ce88a7"
+        },
+        {
+          "path": "calibrations\\extrinsic\\extr_IDIAP3.xml",
+          "size_bytes": 216,
+          "sha256": "0d7156f676a9073f4d223b69c520e212495e0f9495d3593696fa655779b6bbc9"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_CVLab1.xml",
+          "size_bytes": 510,
+          "sha256": "69238e608f63d6f9eba09429c84db7b2f5014fda66a70ccdaa42091fe11c221d"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_CVLab2.xml",
+          "size_bytes": 510,
+          "sha256": "c52ea425513f2d2103b954a0948bc95c390d28ec6a0eaa7c95036dd42630f012"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_CVLab3.xml",
+          "size_bytes": 504,
+          "sha256": "d01d4a0555957f90155911bb98a7477407978b7cdd65cd0331cdeaaf617e0d8b"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_CVLab4.xml",
+          "size_bytes": 507,
+          "sha256": "56830f0712b3267c7fc51494870549da8f0bb285922b68aede9e44030aa0a024"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_IDIAP1.xml",
+          "size_bytes": 509,
+          "sha256": "d723dd56f342d405500b2c98a45d3206e299ae171b47c874adc667a1800d6ff8"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_IDIAP2.xml",
+          "size_bytes": 511,
+          "sha256": "66d5288ec6b91a25a525f5e96c6217b926ef25299c0612fcaf2961d9b87fc1d5"
+        },
+        {
+          "path": "calibrations\\intrinsic_original\\intr_IDIAP3.xml",
+          "size_bytes": 503,
+          "sha256": "e875773beb0bf313bd3f3ea069afdcaee58d5380920c2689cb48950629ae58b5"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_CVLab1.xml",
+          "size_bytes": 431,
+          "sha256": "36932746918baad6167885634d9c8d8127fc426e036827234b26155213bdc7b5"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_CVLab2.xml",
+          "size_bytes": 431,
+          "sha256": "b611a80d94607da01c63bdb9cc2217cf72c9e7dec8eb05413815ae2533cb58ed"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_CVLab3.xml",
+          "size_bytes": 426,
+          "sha256": "88a4998a5ee6ef77b468f5bb032efdc57424fbabfe2e6bd25bf11e6f6de6052a"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_CVLab4.xml",
+          "size_bytes": 430,
+          "sha256": "f47ac260e2e265abf4c8ed9bdae5763d326176301a5405edaf8bf667164877a0"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_IDIAP1.xml",
+          "size_bytes": 429,
+          "sha256": "ebc06a9837735ceef7263b1b0de0d25bd09d3f91dc03f5d664fd075454a9d7b6"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_IDIAP2.xml",
+          "size_bytes": 431,
+          "sha256": "b09058da5bd02ff0c6249f31afbb325a28d882a2014e7cb600f4926a6f39d597"
+        },
+        {
+          "path": "calibrations\\intrinsic_zero\\intr_IDIAP3.xml",
+          "size_bytes": 427,
+          "sha256": "299118eb9c10d196a66c3aa66023069c8ce7533162942d7819f69824f6361ac7"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000000.png",
+          "size_bytes": 2900268,
+          "sha256": "383dbdddfafac1336db5145df666cb0901bc39df7bb1b9623f75839890ef06e0"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000005.png",
+          "size_bytes": 2894792,
+          "sha256": "923a5df3a432222bfb5f9f268e84631a01201b158bef6b3640ebebf217f59769"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000010.png",
+          "size_bytes": 2921079,
+          "sha256": "a071af544c0b9556b4ebbd63371495841a6bc5c675626edf6651dbe6f0df45a3"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000015.png",
+          "size_bytes": 2961740,
+          "sha256": "7b58aa23df96d5511014d4190302e36602bea2f1b1987a2bf435e5b654f55bdf"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000020.png",
+          "size_bytes": 2971081,
+          "sha256": "fcfe5335f015cc3317f04ccf0224434d4a8112f61b398fda10ac7e62f178c821"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000025.png",
+          "size_bytes": 2987318,
+          "sha256": "66ad18b929f380746e7cad08b371fa4abcc6bfe7bd55dda12fa476118450fc75"
+        },
+        {
+          "path": "Image_subsets\\C1\\00000030.png",
+          "size_bytes": 2896994,
+          "sha256": "150dd93be77b9ac114e0b6b801a2a6769fbde59448b7c911f160ed723243c70d"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000000.png",
+          "size_bytes": 2629234,
+          "sha256": "61c98a24787534d96fcf3bf19f76e06f3a543a562318bd383d59f48d16085703"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000005.png",
+          "size_bytes": 2627727,
+          "sha256": "a77518ec2ffa644738e4f4ef6636cd87872c1caf6da231f289e436ed0920656c"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000010.png",
+          "size_bytes": 2635516,
+          "sha256": "02eb491c1dc9d3d7ebe11dad47d9c3b997e2bb279b998737583233c3e48340b0"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000015.png",
+          "size_bytes": 2637036,
+          "sha256": "d155d31fa3b5f913cd0396c5fa851a8d89758f231d9549a6825eb9f0cb1e1aa9"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000020.png",
+          "size_bytes": 2648568,
+          "sha256": "7ee7c3237444d1a5d17fb1c76fdbf45e27addca0422a1ffd887625dbd0aa47d0"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000025.png",
+          "size_bytes": 2647301,
+          "sha256": "76fac627f0a9377effd80ea2109896c30140bda8ad710bd96e0a339141dd045f"
+        },
+        {
+          "path": "Image_subsets\\C2\\00000030.png",
+          "size_bytes": 2645258,
+          "sha256": "7f06945ca14a2db52f10601ba1c4258fc2d9fb4bce85900836c7b5a13bbc8bed"
+        }
+      ],
+      "source_url": "https://www.epfl.ch/labs/cvlab/data/data-wildtrack/",
+      "source_scene_type": "real",
+      "temporal_span_s": 3,
+      "source_time_error_bound_s": null,
+      "browser_validation": "mosaic/images/map loaded; oracle labels and unknown sync precision visible; playback reached 3.5s and stopped with images at 3s marked historical",
+      "geometry_assumption": "deviations_reported_for_selected_subset",
+      "shared_annotation_ids_per_sample_frame": [
+        27,
+        26,
+        24,
+        27,
+        27,
+        30,
+        29
+      ],
+      "shared_ids_are_inherited_ground_truth_not_tracking_results": true,
+      "acquisition": {
+        "url": "https://documents.epfl.ch/groups/c/cv/cvlab-unit/www/data/Wildtrack/Wildtrack_dataset_full.zip",
+        "archive_size": 6807496358,
+        "etag": "\"5b86d551-195c226a6\"",
+        "downloaded_bytes": 38938278,
+        "downloaded_bytes_scope": "final extraction run only; earlier probes/interrupted attempt not counted",
+        "whole_archive_downloaded": false,
+        "members_extracted": 43,
+        "member_crc_verified_by_zipfile": true
+      },
+      "license_status": "No explicit dataset license found on the consulted download page or selected archive members; no media vendored."
+    },
+    "mtmmc": {
+      "status": "not_executed_authorized_access_required",
+      "execution_count": 0,
+      "source_url": "https://sites.google.com/view/mtmmc",
+      "access_review": "Official site requires a signed user agreement and approval before dataset access.",
+      "data_provided_in_this_session": false,
+      "contact_or_submission_performed": false,
+      "detector_validated": false,
+      "identity_association_validated": false,
+      "custody_validated": false
+    }
+  },
+  "next_steps": [
+    "Gate projected positions on evidence of ground contact; visible bbox bottoms can be occluded.",
+    "Keep identity association and custody disabled until independently evaluated.",
+    "Review marker/label density on crowded views; current plots overlap.",
+    "Run MTMMC only after authorized data access is available."
+  ]
+}

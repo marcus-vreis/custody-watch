@@ -63,6 +63,6 @@ class GroundPlane:
         return Point(float(vector[0] / vector[2]), float(vector[1] / vector[2]))
 
     def foot_point(self, bbox: tuple[float, float, float, float]) -> Point:
-        """Base da bbox — onde o objeto toca o chão."""
+        """Projeta o centro inferior da bbox; pressupõe contato visível com o chão."""
         x1, _y1, x2, y2 = bbox
         return self.project((x1 + x2) / 2.0, y2)

@@ -124,6 +124,7 @@ class ReplayView:
         registry = self.registry
         return {
             "site_id": registry.site_id,
+            "position_method": "bbox_bottom_on_ground_plane",
             "floors": [asdict(floor) for floor in registry.floors],
             "timeline": {
                 "start_s": finite_number(
