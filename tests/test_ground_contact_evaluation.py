@@ -5,11 +5,14 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from custody_watch.camera_registry import load_camera_registry
 from custody_watch.ground_contact_evaluation import evaluate_ground_contacts
 from custody_watch.ground_contacts import load_ground_contacts
+from custody_watch.multicamera_media import FrameImage, FrameImages
 from custody_watch.multicamera_replay import frame_to_dict, iter_synchronized
 from custody_watch.types import Point
 from tests.ground_contacts_fixture import make_contacts
@@ -212,3 +215,52 @@ def test_video_offline_preserva_qualificador_de_dimensoes_nao_verificadas(tmp_pa
     assert report["observations"][0]["image_bounds"] == "unavailable"
     assert report["observations"][0]["position_m"] is None
     assert report["observations"][0]["association_eligible"] is False
+
+
+def _video_contacts(tmp_path):
+    path, _ = make_video_registry(tmp_path)
+    registry = load_camera_registry(path)
+    evidence_path = make_contacts(tmp_path / "contacts.json", registry)
+    data = json.loads(evidence_path.read_text(encoding="utf-8"))
+    camera = data["cameras"][0]
+    camera["image_size_px"] = [400, 240]
+    first = camera["observations"][0]
+    first.update(frame_index=3, provenance="model_prediction")
+    camera["observations"] = [first]
+    write_json(evidence_path, data)
+    return registry, load_ground_contacts(evidence_path, registry)
+
+
+def test_dimensoes_do_primeiro_quadro_nao_validam_quadro_anotado_posterior(tmp_path, monkeypatch):
+    registry, evidence = _video_contacts(tmp_path)
+    original = FrameImages.get
+    ok, encoded = cv2.imencode(".jpg", np.zeros((250, 400, 3), dtype=np.uint8))
+    assert ok
+
+    def changed_size(self, camera_id, segment_id, frame_index, **kwargs):
+        if camera_id == "cam-a" and frame_index == 3:
+            return FrameImage("image/jpeg", encoded.tobytes())
+        return original(self, camera_id, segment_id, frame_index, **kwargs)
+
+    monkeypatch.setattr(FrameImages, "get", changed_size)
+
+    with pytest.raises(ValueError, match="image_size_px"):
+        evaluate_ground_contacts(registry, evidence)
+
+
+def test_quadro_sem_referencia_nao_herda_dimensoes_verificadas_de_outro(tmp_path):
+    registry, evidence = _video_contacts(tmp_path)
+
+    report = evaluate_ground_contacts(registry, evidence)
+
+    first = next(
+        r for r in report["observations"] if r["camera_id"] == "cam-a" and r["frame_index"] == 0
+    )
+    annotated = next(
+        r for r in report["observations"] if r["camera_id"] == "cam-a" and r["frame_index"] == 3
+    )
+    assert first["image_bounds"] == "not_checked"
+    assert annotated["image_bounds"] == "verified_source"
+    assert all(r["association_eligible"] is False for r in report["observations"])
+    camera = next(c for c in report["cameras"] if c["camera_id"] == "cam-a")
+    assert camera["verified_frame_indices"] == [3]

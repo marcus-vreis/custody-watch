@@ -23,6 +23,7 @@ def _image_bounds(registry, contacts):
     )
     images = FrameImages(registry) if needs_video else None
     result = {}
+    verified = set()
     for declaration in contacts.cameras:
         camera = known[declaration.camera_id]
         if camera.recording.manifest["source"]["kind"] == "synthetic":
@@ -31,21 +32,21 @@ def _image_bounds(registry, contacts):
         if not camera.recording.source_verified or camera.recording_path is None:
             result[camera.camera_id] = "unavailable"
             continue
-        frame = next((f for f in camera.recording.frames if f.status == "observed"), None)
-        if frame is None:
-            result[camera.camera_id] = "no_observed_frame"
+        indices = sorted({o.frame_index for o in declaration.observations})
+        if not indices:
+            result[camera.camera_id] = "not_checked"
             continue
-        encoded = images.get(
-            camera.camera_id, camera.segment_id, frame.frame_index, resolution="source"
-        )
-        image = cv2.imdecode(np.frombuffer(encoded.data, dtype=np.uint8), cv2.IMREAD_COLOR)
-        if image is None:
-            raise ValueError("image_size_px: não foi possível verificar o quadro")
-        size = image.shape[1], image.shape[0]
-        if declaration.image_size_px != size:
-            raise ValueError("image_size_px: dimensões divergem do vídeo local")
+        for index in indices:
+            encoded = images.get(camera.camera_id, camera.segment_id, index, resolution="source")
+            image = cv2.imdecode(np.frombuffer(encoded.data, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if image is None:
+                raise ValueError("image_size_px: não foi possível verificar o quadro")
+            size = image.shape[1], image.shape[0]
+            if declaration.image_size_px != size:
+                raise ValueError("image_size_px: dimensões divergem do vídeo local")
+            verified.add((camera.camera_id, index))
         result[camera.camera_id] = "verified_source"
-    return result
+    return result, verified
 
 
 def _observation(item, track, evidence, declaration, bounds):
@@ -98,7 +99,7 @@ def evaluate_ground_contacts(registry: CameraRegistry, contacts: GroundContacts)
     """Um run determinístico do arquivo; não mede detector nem certifica a evidência."""
     if contacts.registry_sha256 != registry.manifest_sha256:
         raise ValueError("registry_sha256: evidência de outro cadastro")
-    bounds = _image_bounds(registry, contacts)
+    bounds, verified = _image_bounds(registry, contacts)
     declarations = {c.camera_id: c for c in contacts.cameras}
     evidence = {
         (c.camera_id, c.segment_id, o.frame_index, o.local_track_id): o
@@ -108,6 +109,12 @@ def evaluate_ground_contacts(registry: CameraRegistry, contacts: GroundContacts)
     rows = []
     for item in iter_synchronized(registry):
         camera_id, segment_id = item.camera.camera_id, item.camera.segment_id
+        frame_bounds = bounds.get(camera_id, "not_declared")
+        if (
+            frame_bounds == "verified_source"
+            and (camera_id, item.frame.frame_index) not in verified
+        ):
+            frame_bounds = "not_checked"
         for track in frame_to_dict(item)["tracks"]:
             key = (
                 camera_id,
@@ -121,7 +128,7 @@ def evaluate_ground_contacts(registry: CameraRegistry, contacts: GroundContacts)
                     track,
                     evidence.get(key),
                     declarations.get(camera_id),
-                    bounds.get(camera_id, "not_declared"),
+                    frame_bounds,
                 )
             )
     statuses = Counter(row["contact_status"] for row in rows)
@@ -158,6 +165,9 @@ def evaluate_ground_contacts(registry: CameraRegistry, contacts: GroundContacts)
                 if c.camera_id not in declarations
                 else list(declarations[c.camera_id].image_size_px),
                 "image_bounds": bounds.get(c.camera_id, "not_declared"),
+                "verified_frame_indices": sorted(
+                    index for camera_id, index in verified if camera_id == c.camera_id
+                ),
             }
             for c in sorted(registry.cameras, key=lambda c: c.camera_id)
         ],
