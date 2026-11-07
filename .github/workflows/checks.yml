@@ -24,7 +24,7 @@ jobs:
           package-manager-cache: false
 
       - name: interface do replay
-        run: node --test tests/test_replay_link.cjs tests/test_map_positions.cjs tests/test_camera_inspector.cjs
+        run: node --test tests/test_replay_link.cjs tests/test_map_positions.cjs tests/test_camera_inspector.cjs tests/test_contact_review.cjs
 
       - run: uv sync --extra dev
 
