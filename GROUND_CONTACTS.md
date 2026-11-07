@@ -29,10 +29,15 @@ inexistentes, entradas duplicadas, tipos coercíveis e números não finitos sã
 recusados. O hash do cadastro vincula também calibrações, relógios e hashes de
 sequências. Alterar qualquer entrada exige gerar outra evidência correspondente.
 
-O avaliador verifica dimensões contra um quadro decodificado quando o vídeo
+O avaliador verifica dimensões em cada quadro referenciado quando o vídeo
 local está disponível, preservando as checagens de integridade da fonte. Em
 fonte offline ou sintética, identifica explicitamente o domínio como não
 verificado em vídeo. Não certifica visibilidade/precisão só por validar o JSON.
+
+`verified_frame_indices` registra quais índices foram conferidos, uma vez por
+quadro e câmera. Outros quadros recebem `image_bounds: not_checked`, sem herdar
+a verificação do primeiro quadro ou de outra anotação. Uma mudança de resolução
+em qualquer quadro referenciado recusa a avaliação antes de publicar a saída.
 
 `scripts/evaluate_ground_contacts.py` produz contagens de cobertura,
 abstenções e projeções dos pontos declarados, com hashes e proveniência. A
@@ -93,6 +98,10 @@ o ponto entre apoios dos pés. A calibração fornecida não é validação fís
 independente. O arquivo fixa estimativas para reproduzir o cálculo, mas não
 oferece um gerador de estimativas visuais reproduzível ou sua confirmação humana.
 Nenhum ponto foi ajustado depois de consultar seu erro contra o gabarito.
+
+O registro histórico foi gerado com o código identificado pelos hashes nele
+gravados (disponível em `4264921`). A correção de domínio por quadro da #91 não
+recalcula nem substitui esses resultados; novos runs devem usar outro arquivo.
 
 Reprodução com os recortes e originais locais já obtidos; `--output` exige
 arquivo novo. `<...>` indica caminhos a substituir, não download automático:
