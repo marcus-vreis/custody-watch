@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import groupby
 
 
 @dataclass(frozen=True)
@@ -69,11 +70,15 @@ def p_miss_at_rfa(
     hits = 0
     false_alarms = 0
 
-    for event in ordered:
-        if event.is_true_event:
-            hits += 1
-        else:
-            false_alarms += 1
+    # Um limiar aceita todos os eventos de mesmo score. Atualizar o ponto
+    # no meio de um empate inventava uma decisão impossível e dependia da
+    # ordem de entrada, inclusive com orçamento zero de falsos alarmes.
+    for threshold, tied in groupby(ordered, key=lambda event: event.score):
+        for event in tied:
+            if event.is_true_event:
+                hits += 1
+            else:
+                false_alarms += 1
 
         if false_alarms > budget:
             break
@@ -84,7 +89,7 @@ def p_miss_at_rfa(
         # de operação igualmente bom por um mais caro.
         if p_miss < best.p_miss:
             best = OperatingPoint(
-                threshold=event.score,
+                threshold=threshold,
                 p_miss=p_miss,
                 false_alarms=false_alarms,
                 rfa=false_alarms / video_minutes,
