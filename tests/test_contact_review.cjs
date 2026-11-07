@@ -80,10 +80,10 @@ test("arquivo v1 contém somente campos do contrato e ordena observações", () 
   const ctx=context();
   const a=createDraft(ctx,[400,240],9,input({status:"unknown",point_px:null}));
   const b=draft(); const result=contactsExport(registry,[a,b]);
-  assert.deepEqual(Object.keys(result).sort(),["cameras","registry_sha256","schema_version"]);
+  assert.deepEqual(new Set(Object.keys(result)),new Set(["cameras","registry_sha256","schema_version"]));
   assert.equal(result.schema_version,1);
   assert.deepEqual(result.cameras[0].observations.map(o=>o.local_track_id),[1,9]);
-  assert.deepEqual(Object.keys(result.cameras[0].observations[0]).sort(),["frame_index","local_track_id","method","point_px","provenance","status"]);
+  assert.deepEqual(new Set(Object.keys(result.cameras[0].observations[0])),new Set(["frame_index","local_track_id","method","point_px","provenance","status"]));
   assert.equal("position_m" in result.cameras[0].observations[0],false);
 });
 test("outro ambiente ou dimensões incompatíveis não são misturados no arquivo", () => {
