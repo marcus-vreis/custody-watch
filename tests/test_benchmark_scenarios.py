@@ -28,7 +28,7 @@ def test_json_traz_proveniencia_alcance_e_resultados(tmp_path):
 
     assert execucao.returncode == 0, execucao.stderr
     doc = json.loads(saida.read_text(encoding="utf-8"))
-    assert doc["schema_version"] == 1
+    assert doc["schema_version"] == 2
     assert doc["modo"] == "sintetico: posições geradas, sem detector"
     assert "não demonstra detector" in doc["alcance"]
     assert len(doc["commit"]["sha"]) == 40
@@ -93,10 +93,83 @@ def test_ruido_usa_as_seeds_pedidas(tmp_path):
     assert execucao.returncode == 0, execucao.stderr
     doc = json.loads(saida.read_text(encoding="utf-8"))
     assert doc["seeds"] == [7]
-    assert doc["ruido"]["pessoa"]["id_switch_rate"] == 0.0
+    assert list(doc["ruido"]["niveis"]) == ["leve"]
+    assert doc["ruido"]["niveis"]["leve"]["pessoa"]["id_switch_rate"] == 0.0
     assert [r["seed"] for r in doc["cenarios"][0]["execucoes"]] == [None, 7]
     assert doc["execucoes"]["por_sistema"] == 2
-    assert doc["agregados"]["ruido"]["total"]["sistema"]["execucoes"] == 1
+    assert doc["agregados"]["ruido"]["leve"]["total"]["sistema"]["execucoes"] == 1
+
+
+RUIDO_SEEDS = [
+    "--fps",
+    "3",
+    "10",
+    "--scenarios",
+    "stranger_takes",
+    "owner_pulls_neighbour_closer",
+    "--noise",
+    "--seeds",
+    "4",
+    "5",
+    "--noise-levels",
+    "leve",
+    "forte",
+]
+
+
+def test_agregado_por_seed_registra_metodo_e_celulas(tmp_path):
+    saida = tmp_path / "seeds.json"
+
+    execucao = roda("--output", str(saida), *RUIDO_SEEDS)
+
+    assert execucao.returncode == 0, execucao.stderr
+    doc = json.loads(saida.read_text(encoding="utf-8"))
+    assert doc["nota_alcance"] == (
+        "posições sintéticas; não demonstra detector nem associação calculada"
+    )
+    assert doc["seeds"] == [4, 5]
+    assert list(doc["ruido"]["niveis"]) == ["leve", "forte"]
+    assert "t de Student" in doc["intervalo_confianca"]["metodo"]
+    assert doc["intervalo_confianca"]["limites"]
+    # 2 cenários × 2 fps × (1 sem ruído + 2 níveis × 2 seeds)
+    assert doc["execucoes"] == {"cenarios": 2, "por_sistema": 20, "total": 40}
+
+    linhas = doc["agregados"]["por_seed"]
+    # 2 variantes × 3 princípios (base, P3, total) × 2 fps × 3 condições
+    assert len(linhas) == 36
+    chaves = {(r["variante"], r["principio"], r["fps"], r["ruido"]) for r in linhas}
+    assert len(chaves) == 36
+    for r in linhas:
+        if r["ruido"] == "sem_ruido":
+            assert r["seeds"] == [None]
+            assert r["ic_inf"] is None
+            assert r["ic_sup"] is None
+        else:
+            assert r["seeds"] == [4, 5]
+            assert 0.0 <= r["ic_inf"] <= r["media"] <= r["ic_sup"] <= 1.0
+    total = [r for r in linhas if r["principio"] == "total"]
+    assert all(r["execucoes_por_seed"] == [2] * len(r["seeds"]) for r in total)
+
+
+def test_mesma_seed_da_mesmo_agregado(tmp_path):
+    primeira, segunda = tmp_path / "a.json", tmp_path / "b.json"
+
+    for saida in (primeira, segunda):
+        assert roda("--output", str(saida), *RUIDO_SEEDS).returncode == 0
+
+    a = json.loads(primeira.read_text(encoding="utf-8"))
+    b = json.loads(segunda.read_text(encoding="utf-8"))
+    assert a["cenarios"] == b["cenarios"]
+    assert a["agregados"] == b["agregados"]
+
+
+def test_nivel_de_ruido_desconhecido_e_recusado(tmp_path):
+    saida = tmp_path / "x.json"
+
+    execucao = roda("--output", str(saida), "--noise", "--noise-levels", "extremo")
+
+    assert execucao.returncode != 0
+    assert not saida.exists()
 
 
 def test_cenario_desconhecido_e_recusado(tmp_path):
