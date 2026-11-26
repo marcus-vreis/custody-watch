@@ -2,6 +2,7 @@
 
 import argparse
 import importlib.util
+import secrets
 import sys
 import threading
 from pathlib import Path
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from custody_watch.acesso import TOKEN_ENV
 from custody_watch.painel import Painel
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "serve.py"
@@ -25,7 +27,7 @@ def test_anuncio_mascara_credenciais_e_query_da_fonte(capsys):
         host="127.0.0.1",
     )
 
-    serve._anuncia(args, SimpleNamespace(cifrado=False, porta=8765), True)
+    serve._anuncia(args, SimpleNamespace(cifrado=False, porta=8765, exige_token=False), True)
 
     output = capsys.readouterr().out
     assert "senha-teste" not in output
@@ -117,6 +119,64 @@ def test_allowed_host_chega_ao_servidor():
         assert not servidor.aceita_host(f"outra.local:{servidor.porta}")
     finally:
         servidor.server_close()
+
+
+def _args_servidor(host="127.0.0.1"):
+    return argparse.Namespace(cert=None, key=None, host=host, porta=0, allowed_host=[])
+
+
+def test_sem_variavel_de_token_o_servidor_nao_exige(monkeypatch):
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    servidor = serve._servidor(_args_servidor(), Painel(), None)
+    try:
+        assert not servidor.exige_token
+    finally:
+        servidor.server_close()
+
+
+def test_token_vem_da_variavel_de_ambiente(monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV, secrets.token_urlsafe(32))
+    servidor = serve._servidor(_args_servidor(), Painel(), None)
+    try:
+        assert servidor.exige_token
+    finally:
+        servidor.server_close()
+
+
+@pytest.mark.parametrize("ruim", ["", "curto-demais", "z" * 64])
+def test_token_fraco_na_variavel_recusa_a_subida_sem_ecoar(monkeypatch, ruim):
+    monkeypatch.setenv(TOKEN_ENV, ruim)
+    with pytest.raises(ValueError) as erro:
+        serve._servidor(_args_servidor(), Painel(), None)
+    assert TOKEN_ENV in str(erro.value)
+    if ruim:
+        assert ruim not in str(erro.value)
+
+
+def test_token_nao_e_argumento_de_linha_de_comando(monkeypatch, capsys):
+    """Argumento de CLI aparece na lista de processos e no histórico do shell."""
+    monkeypatch.setattr(sys, "argv", ["serve.py", "0", "--token", "qualquer"])
+    with pytest.raises(SystemExit) as erro:
+        serve._argumentos()
+    assert erro.value.code == 2
+    capsys.readouterr()
+
+
+def test_ajuda_explica_a_variavel_de_token(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["serve.py", "--help"])
+    with pytest.raises(SystemExit):
+        serve._argumentos()
+    assert TOKEN_ENV in capsys.readouterr().out
+
+
+def test_anuncio_com_token_diz_que_exige_e_nao_mostra_o_valor(monkeypatch, capsys):
+    token = secrets.token_urlsafe(32)
+    monkeypatch.setenv(TOKEN_ENV, token)
+    args = argparse.Namespace(fonte="0", weights="local.pt", min_confidence=0.35, host="127.0.0.1")
+    serve._anuncia(args, SimpleNamespace(cifrado=False, porta=8765, exige_token=True), True)
+    saida = capsys.readouterr()
+    assert TOKEN_ENV in saida.out
+    assert token not in saida.out + saida.err
 
 
 def test_reconnect_e_opt_in_e_exige_pesos_locais_a_cada_reset(tmp_path, monkeypatch):

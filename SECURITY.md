@@ -32,12 +32,37 @@ This describes what the code does today, not a hardening guarantee.
   names not in the accepted set: loopback names, the listen address and any
   `--allowed-host NAME` given (repeatable). A wildcard listen address also
   accepts IP literals.
-- **There is no authentication or authorization.** TLS encrypts traffic; it does
-  not identify clients (no client certificates are requested). Anyone who can
-  reach the port can watch the annotated video, read `/estado`, and send the
-  two POST routes (`/ancora`, `/dono`) that add operator pointing to the live
-  session. Do not expose this server to a network without an authenticating
-  reverse proxy or equivalent.
+- **Optional access token, required off loopback.** The token is read only
+  from the environment variable `CUSTODY_WATCH_TOKEN`, never from a
+  command-line argument (visible in process lists and shell history) or a
+  versioned file. It must be 32 to 256 visible ASCII characters with at least
+  8 distinct ones; a weak, empty or oversized value refuses startup with a
+  message that does not echo it. Starting on a non-loopback address without
+  the variable is refused, after the TLS check.
+- With a token, every route except `GET /healthz` requires either
+  `Authorization: Bearer <token>` or a session cookie obtained with it. The
+  Bearer value is compared with `hmac.compare_digest` on bytes; a repeated
+  `Authorization` header, another scheme or a header longer than
+  `Bearer ` + 256 characters is rejected without comparison. Failures answer
+  `401` with `WWW-Authenticate: Bearer`, after draining a small body (as for
+  other refusals), and never echo the token in a response or on the terminal;
+  the token is not written to the journal. The `Host` and `Origin` checks run
+  first, so a foreign `Host` is still `421`.
+- Browsers cannot add a Bearer header to `<img src=/video>`, so a
+  `GET /` without credentials answers `401` with a minimal form. It sends the
+  token once, in the `Authorization` header of `POST /sessao`, which returns
+  `204` and a random session id (never the token) in
+  `cw_sessao=...; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict`, plus
+  `Secure` under TLS. Sessions live in memory, expire after 12 h, are capped
+  at 64 (oldest dropped) and vanish on restart; the cookie is checked against
+  each live session in constant time. `POST /sessao` accepts only Bearer, so a
+  cookie cannot renew itself. The token is never accepted in a query string.
+  There is no logout route and no per-user identity: everyone with the token
+  shares the same rights, and there is no rate limit on failed attempts.
+- Without the variable, on loopback, there is **no authentication**: anyone
+  who can reach the port on this machine can watch the video, read `/estado`
+  and send the POST routes (`/ancora`, `/dono`). TLS encrypts traffic; it does
+  not identify clients (no client certificates are requested).
 - Browser-origin checks (not authentication): a request carrying an `Origin`
   header is answered `403` unless it has the same scheme, host and port as the
   accepted `Host`, and a repeated `Origin` is also `403`. The check runs on every
@@ -56,8 +81,8 @@ This describes what the code does today, not a hardening guarantee.
 - `GET /healthz` returns `200` with the fixed body `{"status":"ok"}` and
   `Cache-Control: no-store`. It reports only that the process answers: no
   video, people, bags, configuration or source state. It passes the same `Host`
-  and `Origin` checks as every other route (`421` for a foreign `Host`) and has
-  no write form.
+  and `Origin` checks as every other route (`421` for a foreign `Host`), needs
+  no token, and has no write form.
 
 **Multicamera replay laboratory** (`scripts/serve_multicamera.py`,
 `src/custody_watch/multicamera_server.py`):

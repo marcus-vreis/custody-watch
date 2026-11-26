@@ -56,5 +56,6 @@ delete.
 
 ## Network exposure
 
-The live screen streams annotated video. See `SECURITY.md`: it has no
-authentication and must not be exposed to a network without one.
+The live screen streams annotated video. See `SECURITY.md`: without the
+`CUSTODY_WATCH_TOKEN` access token it has no authentication, and it refuses to
+listen off loopback without that token and TLS.

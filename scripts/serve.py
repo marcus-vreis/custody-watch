@@ -16,12 +16,21 @@ motivo de `watch_video.py`: todo limiar é em metros.
 
 Fora desta máquina (`--host 0.0.0.0`) só com TLS, `--cert` e `--key`: na
 rede, HTTP em claro é a câmera aberta para quem estiver no mesmo segmento.
+
+Token de acesso: defina a variável de ambiente CUSTODY_WATCH_TOKEN (32 a 256
+caracteres ASCII visíveis, sem espaço), nunca um argumento. Com ela, toda rota
+menos /healthz exige `Authorization: Bearer <token>`; o navegador pede o token
+uma vez e recebe um cookie de sessão. Fora desta máquina o token é obrigatório.
+Sem a variável, em loopback, nada muda. Um token novo:
+
+    python -c "import secrets; print(secrets.token_urlsafe(32))"
 """
 
 from __future__ import annotations
 
 import argparse
 import math
+import os
 import sqlite3
 import sys
 import threading
@@ -31,6 +40,7 @@ from urllib.parse import urlsplit
 
 import cv2
 
+from custody_watch.acesso import TOKEN_ENV, token_do_ambiente
 from custody_watch.aovivo import (
     CameraAoVivo,
     detector_yolo,
@@ -124,7 +134,10 @@ def _argumentos() -> argparse.Namespace:
     parser.add_argument(
         "--host",
         default=HOST_PADRAO,
-        help="onde escutar. O padrão é só esta máquina; fora dela exige --cert e --key",
+        help=(
+            "onde escutar. O padrão é só esta máquina; fora dela exige --cert, --key "
+            f"e a variável de ambiente {TOKEN_ENV}"
+        ),
     )
     parser.add_argument(
         "--allowed-host",
@@ -294,6 +307,7 @@ def _servidor(args: argparse.Namespace, painel: Painel, sessao: LiveSession) -> 
         tls=tls,
         sessao=sessao,
         nomes_permitidos=getattr(args, "allowed_host", ()),
+        token=token_do_ambiente(os.environ),
     )
 
 
@@ -322,6 +336,8 @@ def _anuncia(args: argparse.Namespace, servidor: Servidor, ao_vivo: bool) -> Non
     print(f"detector: {args.weights}, confiança mínima {args.min_confidence}")
     if not so_nesta_maquina(args.host):
         print(f"AVISO: escutando em {args.host} -- a tela fica acessível pela rede, cifrada")
+    if servidor.exige_token:
+        print(f"acesso  : exige o token de {TOKEN_ENV}; /healthz fica livre")
     print(f"\nabra {esquema}://{endereco}:{servidor.porta}   (Ctrl+C encerra)")
     sys.stdout.flush()
 

@@ -27,6 +27,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from .acesso import (
+    MENSAGEM_TOKEN_FRACO,
+    TOKEN_ENV,
+    Sessoes,
+    bearer_confere,
+    cabecalho_cookie,
+    cookie_de_sessao,
+    token_valido,
+)
 from .orchestrator import LiveSession
 from .painel import Painel
 
@@ -62,6 +71,12 @@ CURINGAS = frozenset({"", "0.0.0.0", "::"})
 como Host, e quem abre a tela usa o IP da máquina."""
 
 TIPO_JSON = "application/json"
+
+ROTA_LIVRE = "/healthz"
+"""Única rota aberta com token: diz só que o processo atende."""
+ROTA_SESSAO = "/sessao"
+"""Troca o token (Bearer) por cookie de sessão. Só existe com token."""
+DESAFIO = 'Bearer realm="custody-watch"'
 
 
 def nomes_aceitos(host: str, extras: Iterable[str]) -> frozenset[str]:
@@ -172,7 +187,54 @@ class _Atendente(BaseHTTPRequestHandler):
         if len(origens) > 1 or (origens and not self.server.aceita_origem(origens[0], autoridade)):
             self._recusa_sem_ler(403, "origem não permitida: só a própria tela faz este pedido")
             return False
+        if not self._autorizado():
+            self._recusa_sem_autorizacao()
+            return False
         return True
+
+    def _rota(self) -> str | None:
+        try:
+            return urlsplit(self.path).path
+        except ValueError:  # colchete sem par vira ValueError no urlsplit
+            return None
+
+    def _autorizado(self) -> bool:
+        """Com token: Bearer em qualquer rota; cookie de sessão em todas menos
+        a que cria sessão, para um cookie não se renovar sozinho para sempre."""
+        servidor = self.server
+        if not servidor.exige_token:
+            return True
+        rota = self._rota()
+        if rota == ROTA_LIVRE:
+            return True
+        if servidor.confere_bearer(self.headers.get_all("Authorization") or []):
+            return True
+        return rota != ROTA_SESSAO and servidor.confere_cookie(self.headers.get_all("Cookie") or [])
+
+    def _recusa_sem_autorizacao(self) -> None:
+        """401 sem ecoar nada do pedido. A página pedida sem credencial vira o
+        formulário que troca o token por cookie: o navegador mostra o corpo de
+        um 401 Bearer, e não há outra forma de pôr cabeçalho em `<img>`."""
+        self._descarta_corpo()
+        if self.command == "GET" and self._rota() == "/":
+            tipo, corpo = "text/html; charset=utf-8", ENTRADA.encode("utf-8")
+        else:
+            tipo = "application/json; charset=utf-8"
+            corpo = json.dumps(
+                {"erro": f"autenticação exigida: Authorization: Bearer com o {TOKEN_ENV}"},
+                ensure_ascii=False,
+            ).encode("utf-8")
+        self._envia(401, tipo, corpo, extras=(("WWW-Authenticate", DESAFIO),))
+
+    def _entra(self) -> None:
+        """Pedido já passou pelo Bearer em `parse_request`: cria a sessão."""
+        self._descarta_corpo()
+        valor = self.server.sessoes.cria()
+        self.send_response(204)
+        self.send_header("Set-Cookie", cabecalho_cookie(valor, cifrado=self.server.cifrado))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _recusa_sem_ler(self, codigo: int, motivo: str) -> None:
         """Recusa e fecha a conexão antes de usar o corpo. O corpo pequeno é
@@ -232,6 +294,9 @@ class _Atendente(BaseHTTPRequestHandler):
         lugar da cena.
         """
         rota = urlsplit(self.path).path
+        if rota == ROTA_SESSAO and self.server.exige_token:
+            self._entra()
+            return
         if rota not in ("/ancora", "/dono"):
             self._descarta_corpo()
             self._envia(404, "text/plain; charset=utf-8", "não existe".encode())
@@ -309,11 +374,15 @@ class _Atendente(BaseHTTPRequestHandler):
         corpo = json.dumps({"erro": motivo}, ensure_ascii=False).encode("utf-8")
         self._envia(codigo, "application/json; charset=utf-8", corpo)
 
-    def _envia(self, codigo: int, tipo: str, corpo: bytes) -> None:
+    def _envia(
+        self, codigo: int, tipo: str, corpo: bytes, extras: Iterable[tuple[str, str]] = ()
+    ) -> None:
         self.send_response(codigo)
         self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(corpo)))
         self.send_header("Cache-Control", "no-store")
+        for nome, valor in extras:
+            self.send_header(nome, valor)
         self.end_headers()
         self.wfile.write(corpo)
 
@@ -396,14 +465,26 @@ class Servidor(ThreadingHTTPServer):
         tls: ssl.SSLContext | None = None,
         sessao: LiveSession | None = None,
         nomes_permitidos: Iterable[str] = (),
+        token: str | None = None,
     ) -> None:
         """`nomes_permitidos`: nomes de rede extras que o Host pode trazer,
-        além dos desta máquina e do endereço de escuta."""
+        além dos desta máquina e do endereço de escuta. `token`: com ele, toda
+        rota menos `/healthz` exige o token ou uma sessão trocada por ele."""
         if tls is None and not so_nesta_maquina(host):
             raise ValueError(
                 f"recusado escutar em {host} sem TLS: na rede, HTTP em claro deixa "
                 f"qualquer um no mesmo segmento assistir a câmera. Passe --cert e --key"
             )
+        if token is not None and not token_valido(token):
+            raise ValueError(MENSAGEM_TOKEN_FRACO)
+        if token is None and not so_nesta_maquina(host):
+            raise ValueError(
+                f"recusado escutar em {host} sem {TOKEN_ENV}: TLS cifra, mas não "
+                f"identifica quem conecta, e qualquer um que alcance a porta veria a "
+                f"câmera e apontaria na custódia. Defina a variável de ambiente {TOKEN_ENV}"
+            )
+        self._token = token.encode("ascii") if token is not None else None
+        self.sessoes = Sessoes()
         self.painel = painel
         self.sessao = sessao
         self.segment_id = None
@@ -433,6 +514,17 @@ class Servidor(ThreadingHTTPServer):
     @property
     def cifrado(self) -> bool:
         return self._tls is not None
+
+    @property
+    def exige_token(self) -> bool:
+        return self._token is not None
+
+    def confere_bearer(self, valores: Iterable[str]) -> bool:
+        return self._token is not None and bearer_confere(valores, self._token)
+
+    def confere_cookie(self, valores: Iterable[str]) -> bool:
+        valor = cookie_de_sessao(valores)
+        return valor is not None and self.sessoes.valida(valor)
 
     @property
     def _esquema(self) -> str:
@@ -891,6 +983,8 @@ async function atualiza() {
   const conexao = document.getElementById("conexao");
   try {
     const r = await fetch("/estado", { cache: "no-store" });
+    // Sessão venceu ou o servidor reiniciou: a página volta ao formulário do token.
+    if (r.status === 401) { location.reload(); return; }
     if (!r.ok) throw new Error("servidor indisponível");
     const e = await r.json();
     desenhaRecovery(e.recovery, e.segment_id);
@@ -996,6 +1090,63 @@ atualiza();
 </body>
 </html>
 """
+
+
+ENTRADA = """<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custódia ao vivo · entrada</title>
+<style>
+:root { color-scheme: light dark; --ground: #F1F3F5; --surface: #FFFFFF; --ink: #14181C;
+  --edge: #7A8794; --erro-texto: #8C2A20; --accent: #C4551F; }
+@media (prefers-color-scheme: dark) {
+  :root { --ground: #0E1216; --surface: #161C22; --ink: #E2E8EE; --edge: #687888;
+    --erro-texto: #FFB4A9; --accent: #E0662E; }
+}
+body { margin: 0; background: var(--ground); color: var(--ink);
+  font: .875rem/1.5 "Segoe UI", sans-serif; }
+form { max-width: 360px; margin: 15vh auto 0; padding: 20px 16px; background: var(--surface);
+  border: 1px solid var(--edge); border-radius: 6px; display: grid; gap: 10px; }
+h1 { font: 500 1.0625rem/1.3 Bahnschrift, "Trebuchet MS", sans-serif; margin: 0; }
+input, button { font: inherit; min-height: 36px; padding: 6px 10px; border-radius: 5px;
+  border: 1px solid var(--edge); background: var(--ground); color: var(--ink); }
+button { cursor: pointer; font-weight: 600; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#motivo { color: var(--erro-texto); min-height: 1.5em; margin: 0; }
+</style>
+</head>
+<body>
+<form id="entrada">
+  <h1>Custódia ao vivo</h1>
+  <label for="token">Token de acesso</label>
+  <input id="token" type="password" autocomplete="current-password" required>
+  <button type="submit">Entrar</button>
+  <p id="motivo" role="alert"></p>
+</form>
+<script>
+// O token vai só no cabeçalho Authorization deste POST; a resposta é um
+// cookie HttpOnly que o navegador manda sozinho, inclusive no vídeo.
+document.getElementById("entrada").addEventListener("submit", async (evento) => {
+  evento.preventDefault();
+  const campo = document.getElementById("token");
+  const motivo = document.getElementById("motivo");
+  let r = null;
+  try {
+    r = await fetch("/sessao", {
+      method: "POST", headers: { "Authorization": "Bearer " + campo.value },
+    });
+  } catch (erro) { motivo.textContent = "Sem conexão com o servidor."; return; }
+  campo.value = "";
+  if (r.status === 204) location.reload();
+  else motivo.textContent = "Token recusado.";
+});
+</script>
+</body>
+</html>
+"""
+"""Corpo do 401 da página: só o formulário, sem nada do painel."""
 
 
 __all__ = ["HOST_PADRAO", "PORTA_PADRAO", "Servidor", "contexto_tls", "so_nesta_maquina"]
