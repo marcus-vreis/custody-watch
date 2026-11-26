@@ -15,6 +15,7 @@ SUBCOMANDOS = {
     "replay": "replay_multicamera.py",
     "lab": "serve_multicamera.py",
     "evaluate": "evaluate_recorded.py",
+    "webhook": "export_webhook.py",
 }
 
 

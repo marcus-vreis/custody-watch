@@ -613,6 +613,46 @@ Every decision emits an event carrying the numbers that produced it. Those decis
 
 This is why thresholds live in `config.py` behind declared safe ranges: making them tunable reopens every attack three rounds of adversarial review closed, so a value outside its range is rejected with the reason it exists.
 
+### Optional webhook export
+
+A separate process can forward journal events to a VMS or operations centre.
+It only reads the session directory, so a slow or failing destination never
+delays the pipeline, and the journal is the durable queue:
+
+```powershell
+$env:CUSTODY_WATCH_WEBHOOK_SECRET = "<at least 32 bytes>"
+.venv\Scripts\python.exe scripts/export_webhook.py outputs/journal/SESSION_ID --url https://vms.example.org/hook --cursor outputs/SESSION_ID.webhook-cursor.json
+```
+
+- The cursor file must live under the directory the exporter is started from;
+  a path that resolves outside it is refused.
+- Only complete lines (ending in LF) are sent; the final fragment never is.
+  Lines above `--max-line-bytes`, malformed JSON, invalid envelopes and
+  replayed sequences are skipped and counted as `invalid_records`.
+- Delivery is at least once. The cursor (atomic write) advances only after a
+  2xx or a counted discard; a restart may resend the last event. Each body has a
+  stable `id` (`<session_id>:<sequence>`, also in `X-Custody-Event-Id`) for
+  deduplication.
+- Timeouts, connection errors, 5xx, 408 and 429 are retried with capped
+  exponential backoff and jitter. When attempts run out, the exporter stops
+  without advancing and retries later: nothing is dropped because the
+  destination is down. Redirects are not followed and, like 401/403/404/405/
+  407/410/421, stop without advancing, because they mean misconfiguration.
+  Other 4xx responses discard the event and count it in `discarded`.
+- The URL must be http(s), https outside loopback, with no credentials, query
+  string or fragment. The secret comes only from `CUSTODY_WATCH_WEBHOOK_SECRET`.
+- `X-Custody-Signature: sha256=<hex>` is HMAC-SHA256 over
+  `<X-Custody-Timestamp>.<body>`. Receivers should check it in constant time and
+  reject stale timestamps (`custody_watch.webhook_export.verify_signature`).
+- The body carries only relational fields: event kind, times, track, bag and
+  group IDs, and allow-listed evidence numbers. Unknown fields, images and paths
+  are never sent. Lifecycle records are not forwarded.
+- Counters (`sent`, `discarded`, `attempts`, `retries`, `invalid_records`,
+  `stalled`, delivery latency, `backlog_bytes`) are printed as one JSON line on
+  exit or every `--stats-every` seconds; they hold no event content.
+
+One exporter follows one session; start another for the next run.
+
 ## Results so far
 
 The full record of perception measurements, the generated-footage run, the real-footage runs and the evaluation harness is in [EVALUATION_HISTORY.md](EVALUATION_HISTORY.md), moved there unchanged. In short, with every number cited to its source in that file:

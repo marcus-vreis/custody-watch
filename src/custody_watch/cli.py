@@ -29,6 +29,7 @@ SUBCOMANDOS: dict[str, tuple[str, str]] = {
     "lab": ("serve_multicamera.py", "laboratório multicâmera visual (recebe o cadastro)"),
     "evaluate": ("evaluate_recorded.py", "avalia predições gravadas contra o gabarito"),
     "demo": ("serve_multicamera.py", "laboratório multicâmera com o fixture sintético, sem GPU"),
+    "webhook": ("export_webhook.py", "entrega eventos do journal a um webhook (processo à parte)"),
 }
 
 
