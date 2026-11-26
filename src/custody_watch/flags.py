@@ -72,6 +72,7 @@ def flag_proximity(
     person: int, bag: Bag, t: float, seconds_near: float, config: FlagConfig = DEFAULT_FLAGS
 ) -> Flag:
     """N1: permanência prolongada junto a bagagem de outro grupo."""
+    relacao = "sem dono identificado" if bag.owner_party is None else "de outro grupo"
     return Flag(
         kind="permanencia_bagagem_alheia",
         level=FlagLevel.N1,
@@ -81,7 +82,7 @@ def flag_proximity(
         weight=config.weight_n1,
         explanation=(
             f"Permaneceu {int(seconds_near)}s a menos de 2m da bagagem "
-            f"{bag.bag_id}, de outro grupo, até {_timestamp(t)}."
+            f"{bag.bag_id}, {relacao}, até {_timestamp(t)}."
         ),
     )
 

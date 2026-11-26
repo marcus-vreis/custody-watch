@@ -142,3 +142,17 @@ def test_config_altera_o_peso_do_flag():
 
     assert flag is not None
     assert flag.weight == 99.0
+
+
+def test_proximidade_de_bagagem_orfa_nao_diz_outro_grupo():
+    bag = Bag(bag_id=2, anchor=Point(0.0, 0.0), owner_party=None)
+    flag = flag_proximity(person=1, bag=bag, t=42.0, seconds_near=30.0)
+    assert "sem dono identificado" in flag.explanation
+    assert "de outro grupo" not in flag.explanation
+
+
+def test_proximidade_de_bagagem_com_dono_diz_outro_grupo():
+    bag = Bag(bag_id=2, anchor=Point(0.0, 0.0), owner_party=7)
+    flag = flag_proximity(person=1, bag=bag, t=42.0, seconds_near=30.0)
+    assert "de outro grupo" in flag.explanation
+    assert "sem dono identificado" not in flag.explanation
