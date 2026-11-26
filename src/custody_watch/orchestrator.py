@@ -462,7 +462,7 @@ class _Session:
     # --- grupos ---------------------------------------------------------
 
     def merge_parties(self, people: list[Observation]) -> None:
-        """Funde quem se provar co-movendo, e atenua quem só ficou perto."""
+        """Funde quem se provar co-movendo, e não trata como dono quem só ficou perto."""
         for a, b in combinations(people, 2):
             if a.position.distance_to(b.position) > self.config.party.proximity_m:
                 self.together_since.pop(
@@ -496,7 +496,7 @@ class _Session:
             self._maybe_weak_bond(a, b, pa, pb)
 
     def _maybe_weak_bond(self, a, b, pa: int | None, pb: int | None) -> None:
-        """Proximidade estática prolongada. Não transfere posse — atenua o flag."""
+        """Proximidade estática prolongada. Não transfere posse nem isenta do flag."""
         chave = (min(a.track_id, b.track_id), max(a.track_id, b.track_id))
         desde = self.together_since.setdefault(chave, self.t)
         if not cobre(self.t - desde, self.config.party.weak_bond_s):
@@ -1029,7 +1029,7 @@ class _Session:
                 continue
 
             for person in people:
-                # Só vínculo forte isenta (P1): o fraco atenua, nunca apaga.
+                # Só vínculo forte isenta (P1): o fraco não isenta nem apaga o flag.
                 if self.parties.owns(bag.owner_party, person.track_id):
                     continue
 

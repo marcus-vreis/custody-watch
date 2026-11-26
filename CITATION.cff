@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
 title: "custody-watch"
 abstract: >-
-  Detection of luggage custody changes in airport surveillance video. It ranks
-  clips for a human operator, tracks which bags belong to which travelling
+  Ranking of luggage custody changes in airport surveillance video for human
+  review; not a theft detector. It tracks which bags belong to which travelling
   group, and uses no facial recognition, identity database or biometric
   storage.
 type: software

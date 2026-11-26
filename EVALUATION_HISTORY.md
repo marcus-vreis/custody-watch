@@ -43,6 +43,8 @@ The 0.1% is a property of a 2004 dataset at 384×288, not of the detector. Which
 
 The column that decides is **retained**: how many of the true events of a clean run survive. Under noise the system does not cry wolf, it **goes mute**, and a false-alarm rate of zero produced by silence reads exactly like success.
 
+> **Reproducibility.** No result file for this noise sweep is versioned in the repository (no recorded seed or output; tracked in #134), so these numbers cannot be reproduced from a clone.
+
 | person detections lost | ownerships (of 4) | events retained | |
 |---|---|---|---|
 | 0% – 40% | 4.0 | **100%** | operates |
@@ -92,9 +94,13 @@ Two seconds after the bag started moving, across two tracker ID switches that an
 
 **What it does not prove.** One staged clip is one sample, and a generated one: no real sensor noise, no compression artefacts, no crowd. The false alarms that remain in that run are all bags in the *background*, which a uniform scale reads as standing still — a calibration failure, not a logic one, and the reason the tool now refuses to stay quiet about it. The theft survives a 5× range of scale error. The noise does not.
 
+> **Reproducibility.** No result file for this generated-gate clip is versioned in the repository; the figures above cannot be reproduced from a clone.
+
 ## Real footage: MEVA and UCF-Crime
 
 [MEVA](https://mevadata.org/) is the dataset behind the NIST ActEV challenge — the same programme whose `P_miss @ RFA` metric this project uses. It is staged by actors, on real cameras, CC BY 4.0. Of its 2,212 annotated clips, **four contain a bag being stolen and one a bag being abandoned**. [UCF-Crime](https://www.crcv.ucf.edu/projects/real-world/) is 1,900 unfiltered surveillance videos; searching all 23,542 sentences of its [UCA](https://github.com/Xuange923/Surveillance-Video-Understanding) descriptions, one involves a suitcase.
+
+> **Reproducibility.** No result file for the MEVA runs below is versioned in the repository (`validation/` holds only the multi-camera and contact records); the figures cannot be reproduced from a clone.
 
 | clip | what happens | did the detector see the bag? | result |
 |---|---|---|---|

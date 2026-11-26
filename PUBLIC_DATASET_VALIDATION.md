@@ -144,7 +144,9 @@ Essa pequena checagem do cálculo não estima confiabilidade de produção.
 
 ## Pendências
 
-1. Validar evidências de contato e política de incerteza antes de qualificar posições.
+1. Validar a confiabilidade das evidências de contato e a política de incerteza
+   antes de qualificar posições. O gate de abstenção (#75) e o formato de
+   evidência (#78) já foram entregues; esta pendência é a medição de confiança.
 2. Melhorar legibilidade dos rótulos da planta em cenas densas; há sobreposição.
 3. Ampliar os recortes disponíveis, respeitando as condições de uso; MTMMC fica
    fora do plano ativo deste projeto pessoal.

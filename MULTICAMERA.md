@@ -1,7 +1,8 @@
 # Plano para câmeras, mapa e acompanhamento multicâmera
 
-Estado em 2026-11-07: **cadastro, relógio comum, mosaico e planta de replay
-implementados em CPU**. Associação entre câmeras e transferência de custódia
+Estado em 2026-11-07 (o roadmap abaixo cita trabalho posterior, como a #98;
+consulte o `git log` para o estado atual): **cadastro, relógio comum, mosaico e
+planta de replay implementados em CPU**. Associação entre câmeras e transferência de custódia
 continuam planejadas. O roadmap separa implementações de validações ainda pendentes.
 
 - [x] Cadastro de ambiente e relógio comum de replay.

@@ -26,7 +26,7 @@ uv run pre-commit run --all-files
 
 Beyond the usual formatting and whitespace hygiene, three checks exist for reasons specific to this project:
 
-**The test suite runs on every commit.** It takes under a second, so there is no reason to defer it. Three bugs in this repository's history passed human review and were caught by tooling; the suite is the cheapest tool available.
+**The test suite runs on every commit.** It is fast enough to run on every commit (1,700 tests took about a minute on the maintainer's machine on 2026-11-25; time varies by machine), so there is no reason to defer it. Three bugs in this repository's history passed human review and were caught by tooling; the suite is the cheapest tool available.
 
 **Face recognition imports are rejected.** `insightface`, `face_recognition`, `deepface`, `facenet`, `dlib`, `mediapipe`. This is a permanent scope decision, not a v1 limitation — see below. A rule that depends on someone having read this file is not a rule.
 
@@ -51,7 +51,7 @@ uv run ruff check src tests
 
 Four rules carry this system. A change that violates one is a bug even if every test passes — and if a test appears to require violating one, the test is wrong.
 
-**P1 — Ownership only flows through strong bonds.** `Party.owns()` returns true only for `Bond.STRONG`. If group membership were granted by proximity alone, someone could sit near a traveller for three minutes and become the bag's legitimate owner. Weak bonds attenuate a flag; they never clear it.
+**P1 — Ownership only flows through strong bonds.** `Party.owns()` returns true only for `Bond.STRONG`. If group membership were granted by proximity alone, someone could sit near a traveller for three minutes and become the bag's legitimate owner. A weak bond neither exempts a person from a flag nor counts as presence: the flag is emitted and weighted as for any stranger (`Flag` has no reduced weight or evidence field for weak bonds).
 
 **P2 — A stationary bag is a spatial anchor, not a re-identification problem.** Identical suitcases defeat appearance matching, which is exactly what makes trackers swap IDs under occlusion. Position is identity.
 
