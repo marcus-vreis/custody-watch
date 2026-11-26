@@ -88,6 +88,9 @@ def flag_proximity(
 
 def flag_contact(person: int, bag: Bag, t: float, config: FlagConfig = DEFAULT_FLAGS) -> Flag:
     """N2: contato físico com bagagem de outro grupo."""
+    # Órfã também chega aqui: passada a janela de posse, quem encosta não herda
+    # a bagagem (P1). Sem grupo dono o texto não pode inventar um (#141).
+    origem = "sem dono identificado" if bag.is_orphan else f"do grupo {bag.owner_party}"
     return Flag(
         kind="contato_bagagem_alheia",
         level=FlagLevel.N2,
@@ -95,9 +98,7 @@ def flag_contact(person: int, bag: Bag, t: float, config: FlagConfig = DEFAULT_F
         bag=bag.bag_id,
         t=t,
         weight=config.weight_n2,
-        explanation=(
-            f"Tocou na bagagem {bag.bag_id}, do grupo {bag.owner_party}, em {_timestamp(t)}."
-        ),
+        explanation=f"Tocou na bagagem {bag.bag_id}, {origem}, em {_timestamp(t)}.",
     )
 
 

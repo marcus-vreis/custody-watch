@@ -1,8 +1,9 @@
 import math
 
+import numpy as np
 import pytest
 
-from custody_watch.config import FlagConfig
+from custody_watch.config import Config, FlagConfig, PipelineConfig
 from custody_watch.flags import (
     TAU_S,
     FlagStore,
@@ -11,6 +12,9 @@ from custody_watch.flags import (
     flag_proximity,
     score,
 )
+from custody_watch.ground_plane import GroundPlane
+from custody_watch.orchestrator import run_session
+from custody_watch.tracking import TrackedDetection
 from custody_watch.types import Bag, BagState, Flag, FlagLevel, Point
 
 
@@ -106,6 +110,34 @@ def test_flag_de_contato_e_n2_e_cita_o_grupo_dono():
 
     assert flag.level is FlagLevel.N2
     assert "grupo 7" in flag.explanation
+
+
+def test_flag_de_contato_em_bagagem_sem_dono_nao_cita_grupo():
+    bag = Bag(bag_id=2, anchor=Point(0.0, 0.0), owner_party=None)
+
+    flag = flag_contact(person=99, bag=bag, t=60.0)
+
+    assert flag.level is FlagLevel.N2
+    assert "None" not in flag.explanation
+    assert "grupo" not in flag.explanation
+    assert "sem dono identificado" in flag.explanation
+    assert "01:00" in flag.explanation
+
+
+def test_contato_com_bagagem_orfa_depois_da_janela_emite_n2_sem_grupo():
+    """Estado alcançável: passada `ownership_window_s`, quem encosta numa
+    bagagem sem dono não herda a posse e recebe N2 com `owner_party` None."""
+    plano = GroundPlane(np.eye(3))
+    config = Config(pipeline=PipelineConfig(merge_every_s=0.0, min_bag_height_px=0.0))
+    sozinha = [TrackedDetection(9, "suitcase", (0.1, 0.6, 0.5, 1.0))]
+    com_pessoa = [*sozinha, TrackedDetection(1, "person", (0.0, 0.0, 1.0, 1.0))]
+    quadros = [sozinha] * 15 + [com_pessoa] * 3
+
+    resultado = run_session(((float(i), q) for i, q in enumerate(quadros)), plano, config)
+
+    flags = resultado.flags.for_person(1)
+    assert [f.kind for f in flags] == ["contato_bagagem_alheia"]
+    assert "None" not in flags[0].explanation
 
 
 def test_store_agrupa_flags_por_pessoa():
