@@ -93,6 +93,12 @@ def evento(bag, **evidence):
     return Event(EventKind.BAG_UNATTENDED, 1.0, 2.0 + bag, None, bag, 7, evidence)
 
 
+@pytest.fixture(autouse=True)
+def diretorio_de_trabalho(tmp_path, monkeypatch):
+    """O cursor só é aceito dentro do diretório de trabalho do processo."""
+    monkeypatch.chdir(tmp_path)
+
+
 def journal(tmp_path, quantidade, *, por_parte=10000, fechar=True):
     writer = JournalWriter(
         tmp_path / "journal", session_id="sessao", max_records_per_file=por_parte
@@ -507,6 +513,32 @@ def test_cursor_em_local_perigoso_ou_inexistente_e_recusado(tmp_path, nome):
     config = ExportConfig(url="http://127.0.0.1:9/hook", secret=SEGREDO)
     with pytest.raises(WebhookConfigError):
         WebhookExporter(tmp_path / "journal" / "sessao", tmp_path / nome, config)
+
+
+@pytest.mark.parametrize("nome", ["../cursor.json", "estado/../../cursor.json"])
+def test_cursor_fora_do_diretorio_de_trabalho_e_recusado(tmp_path, monkeypatch, nome):
+    journal(tmp_path, 1)
+    (tmp_path / "estado").mkdir()
+    (tmp_path / "trabalho").mkdir()
+    monkeypatch.chdir(tmp_path / "trabalho")
+    config = ExportConfig(url="http://127.0.0.1:9/hook", secret=SEGREDO)
+    with pytest.raises(WebhookConfigError, match="diretório de trabalho"):
+        WebhookExporter(tmp_path / "journal" / "sessao", nome, config)
+    with pytest.raises(WebhookConfigError, match="diretório de trabalho"):
+        WebhookExporter(tmp_path / "journal" / "sessao", tmp_path / "cursor.json", config)
+    assert not (tmp_path / "cursor.json").exists()
+
+
+def test_cursor_relativo_fica_dentro_do_diretorio_de_trabalho(tmp_path, destinos):
+    destino = destinos()
+    journal(tmp_path, 1)
+    (tmp_path / "estado").mkdir()
+    config = ExportConfig(url=destino.url, secret=SEGREDO, timeout_s=2.0)
+    exporter = WebhookExporter(tmp_path / "journal" / "sessao", "estado/cursor.json", config)
+    assert exporter.run_once() == "caught_up"
+    salvo = load_cursor(tmp_path / "estado" / "cursor.json", "sessao")
+    assert salvo == exporter.cursor
+    assert salvo.offset > 0
 
 
 def test_contadores_em_json_sem_conteudo_de_evento(tmp_path, destinos):

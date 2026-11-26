@@ -244,6 +244,19 @@ class JournalCursor:
     next_sequence: int = 0
 
 
+def resolve_cursor_path(path: Path | str) -> Path:
+    """Caminho real do cursor; recusa o que cai fora do diretório de trabalho.
+
+    A base é fixa (o diretório de onde o exportador foi iniciado) para que um
+    argumento de linha de comando não leia nem sobrescreva arquivo alheio.
+    """
+    base = os.path.realpath(os.getcwd())
+    resolved = os.path.realpath(os.path.join(base, path))
+    if not os.path.normcase(resolved).startswith(os.path.normcase(base) + os.sep):
+        raise WebhookConfigError("cursor fora do diretório de trabalho do exportador")
+    return Path(resolved)
+
+
 def load_cursor(path: Path | str, session_id: str) -> JournalCursor:
     path = Path(path)
     if not path.exists():
@@ -421,7 +434,7 @@ class WebhookExporter:
         random: Callable[[], float] = _random.random,
     ) -> None:
         self.session_dir = Path(session_dir)
-        self.cursor_path = Path(cursor_path)
+        self.cursor_path = resolve_cursor_path(cursor_path)
         if self.cursor_path.suffix.lower() == ".jsonl":
             raise WebhookConfigError("cursor não pode usar a extensão .jsonl do journal")
         if not self.cursor_path.parent.is_dir():

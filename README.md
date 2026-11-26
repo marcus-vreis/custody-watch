@@ -624,6 +624,8 @@ $env:CUSTODY_WATCH_WEBHOOK_SECRET = "<at least 32 bytes>"
 .venv\Scripts\python.exe scripts/export_webhook.py outputs/journal/SESSION_ID --url https://vms.example.org/hook --cursor outputs/SESSION_ID.webhook-cursor.json
 ```
 
+- The cursor file must live under the directory the exporter is started from;
+  a path that resolves outside it is refused.
 - Only complete lines (ending in LF) are sent; the final fragment never is.
   Lines above `--max-line-bytes`, malformed JSON, invalid envelopes and
   replayed sequences are skipped and counted as `invalid_records`.

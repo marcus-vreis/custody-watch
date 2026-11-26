@@ -27,7 +27,10 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("session_dir", type=Path, help="diretório da sessão (<journal>/<id>)")
     parser.add_argument("--url", required=True, help="destino http(s); https fora de loopback")
     parser.add_argument(
-        "--cursor", type=Path, required=True, help="arquivo de progresso (criado se ausente)"
+        "--cursor",
+        type=Path,
+        required=True,
+        help="arquivo de progresso, dentro do diretório atual (criado se ausente)",
     )
     parser.add_argument("--once", action="store_true", help="drena o que existe e sai")
     parser.add_argument("--poll-interval", type=float, default=1.0, help="segundos entre passadas")
