@@ -91,3 +91,27 @@ def test_content_length_invalido_ou_enorme_responde_sem_ler(servidor):
             sock.sendall(cabecalho)
             resposta = _ler_cabecalhos(sock)
         assert b" 501 " in resposta.split(b"\r\n")[0], valor
+
+
+def _pedido_cru(porta: int, dados: bytes) -> bytes:
+    with socket.create_connection(("127.0.0.1", porta), timeout=5.0) as sock:
+        sock.sendall(dados)
+        resposta = b""
+        while True:
+            parte = sock.recv(4096)
+            if not parte:
+                break
+            resposta += parte
+    return resposta
+
+
+def test_caminho_invalido_devolve_400(servidor):
+    resposta = _pedido_cru(
+        servidor, f"GET http://[x HTTP/1.1\r\nHost: 127.0.0.1:{servidor}\r\n\r\n".encode()
+    )
+    assert resposta.startswith(b"HTTP/1.0 400")
+
+
+def test_pedido_http_0_9_devolve_400(servidor):
+    resposta = _pedido_cru(servidor, b"GET /api/state\r\n\r\n")
+    assert resposta.startswith(b"HTTP/1.0 400")

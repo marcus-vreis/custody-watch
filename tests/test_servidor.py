@@ -346,3 +346,38 @@ def test_sem_sessao_apontar_nao_existe(no_ar):
         _posta(base + "/ancora", {"x": 0.5, "y": 0.5})
 
     assert erro.value.code == 409
+
+
+def _pedido_cru(porta: int, dados: bytes) -> bytes:
+    with socket.create_connection(("127.0.0.1", porta), timeout=5.0) as sock:
+        sock.sendall(dados)
+        resposta = b""
+        while True:
+            parte = sock.recv(4096)
+            if not parte:
+                break
+            resposta += parte
+    return resposta
+
+
+def test_caminho_invalido_devolve_400_e_o_servidor_continua(no_ar):
+    _, servidor, base = no_ar
+
+    resposta = _pedido_cru(
+        servidor.porta,
+        f"GET http://[x HTTP/1.1\r\nHost: 127.0.0.1:{servidor.porta}\r\n\r\n".encode(),
+    )
+
+    assert resposta.startswith(b"HTTP/1.0 400")
+    with _get(base + "/healthz") as seguinte:
+        assert seguinte.status == 200
+
+
+def test_pedido_http_0_9_devolve_400_e_o_servidor_continua(no_ar):
+    _, servidor, base = no_ar
+
+    resposta = _pedido_cru(servidor.porta, b"GET /estado\r\n\r\n")
+
+    assert resposta.startswith(b"HTTP/1.0 400")
+    with _get(base + "/healthz") as seguinte:
+        assert seguinte.status == 200

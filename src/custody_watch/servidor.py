@@ -64,6 +64,17 @@ como Host, e quem abre a tela usa o IP da máquina."""
 TIPO_JSON = "application/json"
 
 
+def cabecalhos(headers: object, nome: str) -> list[str]:
+    """Valores de um cabeçalho. Num pedido HTTP/0.9 a classe base guarda os
+    cabeçalhos num dicionário, que não tem ``get_all``."""
+    obter_todos = getattr(headers, "get_all", None)
+    if obter_todos is not None:
+        return list(obter_todos(nome) or [])
+    obter = getattr(headers, "get", None)
+    valor = obter(nome) if obter else None
+    return [valor] if valor else []
+
+
 def nomes_aceitos(host: str, extras: Iterable[str]) -> frozenset[str]:
     """Os nomes que o Host de um pedido pode trazer, em minúsculas e sem
     colchetes: os desta máquina, o de escuta quando é de rede e os declarados
@@ -163,12 +174,20 @@ class _Atendente(BaseHTTPRequestHandler):
         Origin desta tela, ou recusa antes de rotear ou usar o corpo."""
         if not super().parse_request():
             return False
-        hosts = self.headers.get_all("Host") or []
+        try:
+            urlsplit(self.path)
+        except ValueError:
+            self._recusa_sem_ler(400, "caminho inválido")
+            return False
+        hosts = cabecalhos(self.headers, "Host")
+        if not hosts:
+            self._recusa_sem_ler(400, "pedido sem Host")
+            return False
         autoridade = hosts[0] if len(hosts) == 1 else None
         if not self.server.aceita_host(autoridade):
             self._recusa_sem_ler(421, "Host não permitido: abra a tela pelo endereço do servidor")
             return False
-        origens = self.headers.get_all("Origin") or []
+        origens = cabecalhos(self.headers, "Origin")
         if len(origens) > 1 or (origens and not self.server.aceita_origem(origens[0], autoridade)):
             self._recusa_sem_ler(403, "origem não permitida: só a própria tela faz este pedido")
             return False
@@ -178,6 +197,9 @@ class _Atendente(BaseHTTPRequestHandler):
         """Recusa e fecha a conexão antes de usar o corpo. O corpo pequeno é
         lido e descartado: no Windows, fechar com bytes não lidos no socket
         vira RST, e o cliente perde a resposta de recusa."""
+        if self.request_version == "HTTP/0.9":
+            # HTTP/0.9 não tem linha de status; a recusa precisa ser legível.
+            self.request_version = "HTTP/1.0"
         self._descarta_corpo()
         self._recusa(codigo, motivo)
 

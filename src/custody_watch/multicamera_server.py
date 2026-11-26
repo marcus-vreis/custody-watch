@@ -13,7 +13,7 @@ import cv2
 
 from .multicamera_media import FrameImages
 from .multicamera_view import ReplayView
-from .servidor import host_aceito, nomes_aceitos
+from .servidor import cabecalhos, host_aceito, nomes_aceitos
 
 ASSETS = {
     "/": ("multicamera.html", "text/html; charset=utf-8"),
@@ -93,7 +93,23 @@ class _Handler(BaseHTTPRequestHandler):
         """Ponto único, antes de qualquer rota e método: Host desta máquina ou 421."""
         if not super().parse_request():
             return False
-        hosts = self.headers.get_all("Host") or []
+        try:
+            urlsplit(self.path)
+        except ValueError:
+            self.close_connection = True
+            self._drain_refused_body()
+            if self.request_version == "HTTP/0.9":
+                self.request_version = "HTTP/1.0"
+            self.send_error(HTTPStatus.BAD_REQUEST, "caminho invalido")
+            return False
+        hosts = cabecalhos(self.headers, "Host")
+        if not hosts:
+            self.close_connection = True
+            self._drain_refused_body()
+            if self.request_version == "HTTP/0.9":
+                self.request_version = "HTTP/1.0"
+            self.send_error(HTTPStatus.BAD_REQUEST, "pedido sem Host")
+            return False
         authority = hosts[0] if len(hosts) == 1 else None
         if self.server.accepts_host(authority):
             return True
